@@ -227,3 +227,15 @@ details.qa .b em{font-style:normal;font-weight:700;color:var(--blue)}
 .dlg .btn{width:100%}
 details.imp>summary{font-weight:700;cursor:pointer}
 @media print{body{padding:0}.side,.top,.bottom{display:none}}
+
+/* AI mode switch */
+.aisw,.aitog{display:flex;align-items:center;gap:8px;font-weight:700}
+.aisw{margin-left:auto;height:40px;padding:0 12px;border:1px solid var(--line);background:var(--surface);border-radius:999px;font-size:13px}
+.swlbl{color:var(--muted)}
+.sw{position:relative;width:38px;height:22px;border-radius:999px;background:var(--line);transition:.2s;flex:none}
+.sw i{position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:.2s}
+.sw.on{background:var(--blue)}
+.sw.on i{transform:translateX(16px)}
+.swst{min-width:26px;color:var(--ink)}
+.aitog .swlbl{color:inherit;margin-right:auto}
+body.ai-off [data-act=aiSummary],body.ai-off [data-act=improve],body.ai-off [data-act=genCover],body.ai-off [data-act=aiATS],body.ai-off [data-act=genIv],body.ai-off [data-act=genOb],body.ai-off [data-act=genSi]{opacity:.6}
