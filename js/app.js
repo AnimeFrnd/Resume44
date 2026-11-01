@@ -373,7 +373,7 @@ function vTemplates(){
   return `<div class="page-h"><h1>Themes and sharing</h1><p>Pick a theme, or use one a friend shared. Every theme can be customized once it is in your resume: colours, heading style, sections and more.</p></div>
   <h2 class="sec-t" style="margin-top:0">Themes</h2><div class="gal">${builtin}</div>${feat?`<h2 class="sec-t">Featured templates</h2><div class="gal">${feat}</div>`:''}
   <h2 class="sec-t">Start from a photo</h2>
-  <div class="card imp"><p class="hint" style="margin:0">Upload a photo or screenshot of a resume whose style you like. We match the layout (fresher / classic / modern), pick up its main colour, and start a customised resume for you. Fonts are approximated from the closest theme.</p><div class="row">${upl('tpl.image','Upload resume photo')}</div></div>
+  <div class="card imp"><p class="hint" style="margin:0">Upload a photo or screenshot of a resume you like. We pick up its main colour and its text, then start a resume for you. Choose the closest theme afterwards.</p><div class="row">${upl('tpl.image','Upload resume photo')}</div></div>
   <h2 class="sec-t">Have a share code?</h2>
   <details class="card imp"><summary>I have a share code from a friend</summary><label class="f" style="margin:10px 0 0"><span>Paste a share code</span><textarea rows="3" data-f="imp.code" placeholder="R44-…">${esc(S.f.imp.code||'')}</textarea></label>
    <div class="row"><button class="btn pri" data-act="importCode">Add template</button><span class="hint" style="margin:0">Codes come from a friend\u2019s Share this theme panel.</span></div></details>
@@ -505,15 +505,8 @@ function fileToCanvas(file,max=2000,min=1000){
 }
 async function visionText(c){
   if(BK.on&&BK.ai){const d=await api('/api/ai',{method:'POST',body:{prompt:'Transcribe all the text in this image in reading order. Keep line breaks. Output only the text, nothing else.',image:c.toDataURL('image/jpeg',.85).split(',')[1],max_tokens:1500}});return ((d&&d.text)||'').trim()}
-  const ctl=new AbortController(),tm=setTimeout(()=>ctl.abort(),20000);
-  try{
-    const r=await fetch(API_URL,{method:'POST',signal:ctl.signal,headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1000,messages:[{role:'user',content:[
-        {type:'image',source:{type:'base64',media_type:'image/jpeg',data:c.toDataURL('image/jpeg',.85).split(',')[1]}},
-        {type:'text',text:'Transcribe all the text in this image in reading order. Keep line breaks. Output only the text, nothing else.'}]}]})});
-    if(!r.ok)throw new Error('API '+r.status);
-    const d=await r.json();return (d.content||[]).filter(x=>x.type==='text').map(x=>x.text).join('\n').trim();
-  }finally{clearTimeout(tm)}
+  // Without a configured server-side AI endpoint, use local OCR below.
+  throw new Error('No OCR vision backend configured');
 }
 async function readImage(file){
   const c=await fileToCanvas(file);
@@ -522,286 +515,73 @@ async function readImage(file){
   const out=await T.recognize(c,'eng',{logger:m=>{if(m.status==='recognizing text')toast('Reading your image… '+Math.round(m.progress*100)+'%',0)}});
   return ((out&&out.data&&out.data.text)||'').trim();
 }
-const HEADRE=/^(professional\s+summary|career\s+objective|career\s+objective\s*\/\s*summary|summary|objective|profile|about\s+me|technical\s+skills|key\s+skills|core\s+skills|skills|work\s+experience|professional\s+experience|experience|employment(?:\s+history)?|educational\s+qualifications?|education|academic\s+(?:qualifications?|details)|projects?|certifications?|languages?(?:\s+known)?|awards?(?:\s+and\s+achievements)?|achievements|personal\s+(?:profile|details|information)|declaration|hobbies(?:\s+and\s+interests)?|strengths?|area\s+of\s+interest)$/i;
+const HEADRE=/^(professional\s+summary|career\s+objective|summary|objective|profile|about\s+me|technical\s+skills|key\s+skills|core\s+skills|skills|work\s+experience|professional\s+experience|experience|employment(?:\s+history)?|educational\s+qualifications?|education|academic\s+(?:qualifications?|details)|projects?|certifications?|languages?(?:\s+known)?|awards?(?:\s+and\s+achievements)?|achievements|personal\s+(?:profile|details)|declaration)$/i;
 function parseResume(text){
-  // Normalize common OCR junk carefully (do NOT destroy letters)
-  text=String(text||'')
-    .replace(/[|]/g,'I')
-    .replace(/[¥✓✔√]/g,'•')
-    .replace(/\u00a0/g,' ');
-  const L=text.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
-  const full=L.join('\n');
-  const email=(text.match(/[\w.+-]+@[\w-]+\.[\w.]+/)||[''])[0];
-  let phone='';
-  const phM=text.match(/(?:phone\s*(?:no\.?|number)?|mobile|contact)\s*[:.\-]?\s*(\+?\d[\d\s().-]{8,}\d)/i)
-    ||text.match(/(\+91[\s-]?\d{10}|\+?\d{1,3}[\s-]?\d[\d\s().-]{7,}\d)/);
-  if(phM)phone=phM[1].replace(/\s+/g,' ').trim();
-  const link=(text.match(/(?:https?:\/\/|www\.|linkedin\.com\/in\/|github\.com\/)\S+/i)||[''])[0].replace(/[.,;]+$/,'');
-  const hd=l=>HEADRE.test(l.replace(/[:\s]+$/,''));
-  const isLabel=l=>/^(address|phone|email|mobile|contact|father|date of birth|dob|gender|sex|nationality|marital|language)/i.test(l);
-  const clean=l=>!/@/.test(l)&&!/\d{4}/.test(l)&&!hd(l)&&l.length<50&&!isLabel(l);
-  // Name
-  let name=L.slice(0,8).find(l=>clean(l)&&l.split(/\s+/).length>=2&&l.split(/\s+/).length<=5&&/^[A-Za-z .'-]+$/.test(l))||'';
-  if(!name)name=L.slice(0,5).find(l=>clean(l)&&l.split(/\s+/).length<=4&&/^[A-Za-z .'-]+$/.test(l))||'';
+  const raw=String(text||'').replace(/\r/g,'');
+  const original=raw.split(/\n/).map(x=>x.trim()).filter(Boolean);
+  const L=original.map(x=>x.replace(/\s+/g,' ').trim());
+  const norm=s=>String(s||'').replace(/[:：\-–]\s*$/,'').trim().toLowerCase();
+  const email=(raw.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)||[''])[0];
+  const phone=(raw.match(/(?:\+?91[\s-]?)?[6-9]\d{9}|\+?\d[\d\s().-]{8,}\d/)||[''])[0].trim();
+  const link=(raw.match(/(?:https?:\/\/|www\.|linkedin\.com|github\.com)\S+/i)||[''])[0];
+  const heading=l=>HEADRE.test(norm(l));
+  const sections=[];let cur=null;
+  original.forEach(line=>{const l=line.replace(/\s+/g,' ').trim();if(heading(l)){cur={key:norm(l),lines:[]};sections.push(cur)}else if(cur)cur.lines.push(l.replace(/^[-•●▪■*✓✔☑v]\s*/i,'').trim())});
+  const get=re=>{const z=sections.find(x=>re.test(x.key));return z?z.lines:[]};
+  const label=(aliases)=>{const re=new RegExp('^\\s*(?:'+aliases.join('|')+')\\s*[:：\\-]?\\s*(.*)$','i');for(const l of L){const m=l.match(re);if(m&&m[1])return m[1].trim()}return ''};
+  const header=L.slice(0,Math.min(L.length,12));
+  let name=header.find(l=>!/@/.test(l)&&!/^\+?\d[\d\s().-]{8,}$/.test(l)&&!heading(l)&&!/\b(resume|curriculum vitae)\b/i.test(l)&&l.split(/\s+/).length<=4&&/^[A-Za-z][A-Za-z .'-]+$/.test(l))||'';
   if(name&&name===name.toUpperCase())name=name.toLowerCase().replace(/\b[a-z]/g,m=>m.toUpperCase());
-  // Address
-  let location='';
-  for(const l of L.slice(0,20)){
-    const m=l.match(/(?:address|location)\s*[:.\-]?\s*(.+)/i);
-    if(m&&m[1].length>4&&m[1].length<90){location=m[1].replace(/\s+/g,' ').trim();break}
-  }
-  // Sections
-  const secs=[];let cur=null;
-  L.forEach(l=>{
-    const key=l.replace(/[:\s]+$/,'').toLowerCase();
-    if(hd(l)||/^(career\s+objective|educational\s+qualification|personal\s+profile|declaration)$/i.test(key)){
-      cur={k:key,lines:[]};secs.push(cur);
-    }else if(cur)cur.lines.push(l.replace(/^[-•●▪■*✓✔]\s*/,''));
-  });
-  const get=re=>{const x=secs.find(z=>re.test(z.k));return x?x.lines:[]};
-  const getJoined=(re,sep=' ')=>get(re).join(sep).replace(/\s+/g,' ').trim();
-  // Summary
-  let summary=getJoined(/^(professional summary|career objective|career objective\s*\/\s*summary|summary|objective|about me)$/).slice(0,700);
-  if(!summary){
-    const objIdx=L.findIndex(l=>/career\s+objective|objective/i.test(l));
-    if(objIdx>=0&&objIdx<12){
-      const after=L.slice(objIdx+1,objIdx+6).filter(x=>!hd(x)&&!/^(educational|skills|personal|declaration)/i.test(x)&&x.length>25);
-      if(after.length)summary=after.join(' ').slice(0,700);
-    }
-  }
-  // Skills
-  let skills=get(/skill|technical|core\s+competenc/).map(s=>s.replace(/^[-•●▪■*✓✔]\s*/,'').trim()).filter(Boolean).join(', ').replace(/,\s*,/g,',').replace(/\s+/g,' ').trim().slice(0,500);
-  if(!skills){
-    const skIdx=L.findIndex(l=>/^(skills|technical skills|key skills)/i.test(l.replace(/[:\s]+$/,'')));
-    if(skIdx>=0)skills=L.slice(skIdx+1,skIdx+10).filter(x=>!hd(x)&&!/^(personal|declaration|education)/i.test(x)).map(s=>s.replace(/^[-•●▪■*✓✔]\s*/,'')).filter(Boolean).join(', ').replace(/\s+/g,' ').slice(0,400);
-  }
-  const expLines=get(/experience|employment|internship/);
-  // ---------- Education – OCR table aware ----------
+  const ni=header.findIndex(l=>l.toLowerCase()===name.toLowerCase());
+  const role=ni>=0?header.slice(ni+1,ni+4).find(l=>l!==email&&!/@/.test(l)&&!/\d{5,}/.test(l)&&l.length<65&&/^[A-Za-z &/,().-]+$/.test(l)&&!heading(l))||'':'';
+  const address=label(['address','residential address','present address','location']);
+  const summary=get(/^(professional summary|career objective|summary|objective|profile|about me)$/).join(' ').slice(0,1000);
+  const skillLines=get(/skill/);
+  const skills=skillLines.map(x=>x.replace(/^[✓✔☑vV\s]+(?=[A-Za-z])/,'').replace(/^[•●▪■*\-]+\s*/, '').trim()).filter(Boolean).join(', ').slice(0,900);
+  const exp=get(/experience|employment/);
+  const eduLines=get(/education|qualification|academic/);
   const education=[];
-  const eduStart=L.findIndex(l=>/educational\s+qualifications?|^\s*education\s*$|academic/i.test(l));
-  const eduEnd=L.findIndex((l,i)=>i>(eduStart<0?0:eduStart)&&(/^(skills|personal|declaration|experience|projects|certifications)/i.test(l.replace(/[:\s]+$/,''))));
-  let eduRaw=eduStart>=0?L.slice(eduStart+1,eduEnd>0?eduEnd:eduStart+18):[];
-  eduRaw=eduRaw.filter(l=>!/^(qualification|institution|university|board|year|marks|passing)\b/i.test(l)||/\b(20\d{2}|bsc|ssc|intermediate|degree)\b/i.test(l));
-  const eduMerged=[];
-  for(let i=0;i<eduRaw.length;i++){
-    let line=eduRaw[i];
-    while(i+1<eduRaw.length){
-      const nxt=eduRaw[i+1];
-      const nxtHasYear=/\b(20\d{2}|19\d{2})\b/.test(nxt);
-      const nxtIsDeg=/\b(ssc|intermediate|b\.?\s*sc|b\.?\s*tech|degree|hsc|10th|12th)\b/i.test(nxt);
-      if(!nxtHasYear&&!nxtIsDeg&&nxt.length<55){line+=' '+nxt;i++}else break;
-    }
-    eduMerged.push(line.replace(/\s+/g,' ').trim());
-  }
-  // Row helpers for common Indian fresher OCR
-  const pushEdu=(degree,school,board,year,marks)=>{
-    if(!degree&&!school)return;
-    education.push({degree:(degree||'').replace(/\s+/g,' ').trim().slice(0,70),school:(school||'').slice(0,90),board:(board||'').slice(0,60),start:year||'',end:year||'',marks:marks||''});
-  };
-  // Degree / BSc row
-  for(const line of eduMerged){
-    if(!/\b(?:degree|b\.?\s*sc)\b/i.test(line))continue;
-    const yr=(line.match(/\b(20\d{2})\b/)||[])[0]||'';
-    const mk=(line.match(/\b(20\d{2})\b\s+(\d{1,2}\.\d{1,2}|\d{2,3})\b/)||line.match(/(\d{1,2}\.\d{1,2})\s*$/)||[])[2]||(line.match(/(\d{1,2}\.\d{1,2})\s*$/)||[])[1]||'';
-    let deg='Degree BSC AC Chemistry';
-    if(/b\.?\s*tech/i.test(line))deg='B.Tech';
-    let school='',board='';
-    if(/krishna/i.test(line)||/degree\s*&?\s*pg/i.test(line))school='Dr V S Krishna Govt. Degree & Pg College';
-    if(/andhra\s*univ/i.test(line))board='Andhra University';
-    if(!school){const sm=line.match(/\b([A-Za-z .]{5,}(?:College|Institute)[A-Za-z .]*)/i);if(sm)school=sm[1].trim()}
-    if(!board){const bm=line.match(/\b([A-Za-z ]+University)\b/i);if(bm)board=bm[1]}
-    pushEdu(deg,school,board,yr,mk);break;
-  }
-  // Intermediate row
-  for(const line of eduMerged){
-    if(!/\bintermediate\b/i.test(line))continue;
-    const yr=(line.match(/\b(20\d{2})\b/)||[])[0]||'';
-    const mk=(line.match(/\b(20\d{2})\b\s+(\d{2,3})\b/)||[])[2]||'';
-    let deg=/mpc/i.test(line)?'Intermediate MPC':'Intermediate';
-    const idx=eduMerged.indexOf(line);
-    const near=(eduMerged.slice(Math.max(0,idx-1),idx+3).join(' '));
-    if(/mpc/i.test(near))deg='Intermediate MPC';
-    let school='',board='';
-    if(/junior\s*college/i.test(near))school='Govt Junior College Ranastalm';
-    if(/board\s*of\s*inter/i.test(near))board='Board of Intermediate';
-    if(!school){const sm=near.match(/\b(Govt\.?\s*Junior\s*College[A-Za-z ,]*)/i);if(sm)school=sm[1].trim()}
-    if(!board)board='Board of Intermediate';
-    pushEdu(deg,school,board,yr,mk);break;
-  }
-  // SSC row
-  for(const line of eduMerged){
-    if(!/\bssc\b/i.test(line))continue;
-    const yr=(line.match(/\b(20\d{2})\b/)||[])[0]||'';
-    const mk=(line.match(/\b(20\d{2})\b\s+(\d{2,3})\b/)||[])[2]||'';
-    let school='',board='S.S.C';
-    if(/high\s*school/i.test(line))school='Govt. High School, Patharlapalli';
-    if(!school){const sm=line.match(/\b(Govt\.?\s*High\s*School[A-Za-z ,]*)/i);if(sm)school=sm[1].trim()}
-    pushEdu('SSC',school,board,yr,mk);break;
-  }
-  // Generic fallback
-  if(!education.length){
-    eduMerged.forEach(line=>{
-      const yr=(line.match(/\b(20\d{2}|19\d{2})\b/)||[])[0]||'';
-      const degM=line.match(/\b((?:degree\s+)?b\.?\s*sc(?:\s+\w+)?|b\.?\s*tech|intermediate(?:\s+\w+)?|ssc|hsc|10th|12th)\b/i);
-      if(!degM&&!yr)return;
-      let marks='';const mm=line.match(/\b(20\d{2})\b\s+(\d{1,2}\.\d{1,2}|\d{2,3})\b/);if(mm)marks=mm[2];
-      const entry={degree:degM?degM[0]:'',school:'',board:'',start:yr,end:yr,marks};
-      const sm=line.match(/\b([A-Za-z .]{4,}(?:College|School)[A-Za-z ,.]*)/i);if(sm)entry.school=sm[1].slice(0,80);
-      const bm=line.match(/\b([A-Za-z .]*(?:University|Board of Intermediate|S\.?\s*S\.?\s*C\.?))\b/i);if(bm)entry.board=bm[1].slice(0,50);
-      if(entry.degree||entry.school)education.push(entry);
-    });
-  }
-  // ---------- Personal profile ----------
-  const profile={father:'',dob:'',languages:'',gender:'',marital:'',nationality:'',strengths:''};
-  const pick=(re)=>{const m=full.match(re);return m?(m[1]||'').trim().replace(/\s+/g,' ').slice(0,100):''};
-  profile.father=pick(/(?:father.?s?\s*name|father)\s*[:.\-]?\s*([A-Za-z .]{2,40})/i);
-  profile.dob=pick(/(?:date\s*of\s*birth\.?|d\.?o\.?b\.?)\s*[:.\-]?\s*([0-9]{4}\s+[A-Za-z]+\s+[0-9]{1,2}|[0-9]{1,2}[\/\-.][0-9]{1,2}[\/\-.][0-9]{2,4}|[0-9]{1,2}\s+[A-Za-z]+\s+[0-9]{2,4}|[A-Za-z]+\s+[0-9]{1,2},?\s+[0-9]{2,4})/i);
-  profile.gender=pick(/(?:gender|sex)\s*[:.\-]?\s*(male|female|other)\b/i);
-  profile.marital=pick(/(?:marital\s*status)\s*[:.\-]?\s*(single|married|unmarried)\b/i);
-  profile.nationality=pick(/(?:nationality)\s*[:.\-]?\s*(indian|[A-Za-z ]{3,25})/i);
-  profile.languages=pick(/(?:languages?\s*known|language\s*known)\s*[:.\-]?\s*([A-Za-z ,\/]{3,60})/i);
-  profile.strengths=pick(/(?:strengths?)\s*[:.\-]?\s*([^\n]{5,120})/i);
-  // ---------- Declaration ----------
-  let declText='',declPlace='',declDate='';
-  const declSec=get(/declaration/);
-  if(declSec.length){
-    declText=declSec.filter(l=>!/^(place|date|signature)\s*[:.\-]/i.test(l)).join(' ').slice(0,350);
-  }else{
-    const di=L.findIndex(l=>/^declaration/i.test(l));
-    if(di>=0)declText=L.slice(di+1,di+5).filter(l=>!/^(place|date|signature)\s*[:.\-]/i.test(l)&&!hd(l)).join(' ').slice(0,350);
-  }
-  for(const l of L){
-    const pm=l.match(/^place\s*[:.\-]?\s*([A-Za-z][A-Za-z .]{1,35})/i);
-    if(pm&&!declPlace)declPlace=pm[1].replace(/\s*(date|signature).*$/i,'').trim();
-    const dm=l.match(/^date\s*[:.\-]?\s*([0-9]{1,2}[\/\-.][0-9]{1,2}[\/\-.][0-9]{2,4})/i);
-    if(dm&&!declDate)declDate=dm[1].trim();
-  }
-  if(!declPlace){const m=full.match(/\bplace\s*[:.\-]?\s*([A-Za-z][A-Za-z .]{1,30}?)(?:\s+(?:date|signature)\b)/i);if(m)declPlace=m[1].trim()}
-  if(!declDate){const m=full.match(/\bdate\s*[:.\-]?\s*([0-9]{1,2}[\/\-.][0-9]{1,2}[\/\-.][0-9]{2,4})/i);if(m)declDate=m[1].trim()}
-  if(!declText&&/hereby declare/i.test(full))declText=DECL;
-  // Fresher detection
-  const hasExp=expLines.some(l=>l.length>15)||/\b(intern|worked as|years?\s+of\s+experience|software\s+engineer)\b/i.test(full.slice(0,1200));
-  const hasProfile=!!(profile.father||profile.dob||profile.gender||profile.nationality||profile.marital);
-  const hasDecl=!!(declText||/hereby declare/i.test(full));
-  const eduHeavy=education.length>=2||eduRaw.length>=3;
-  const isFresher=!hasExp&&(eduHeavy||hasProfile||hasDecl||/fresher|career\s*objective|seeking\s*an?\s*(entry|opportunity)/i.test(full));
-  return {
-    name,role:'',email,phone,link,location,text:full,
-    summary,skills,exp:expLines,education,profile,
-    decl:{text:declText||(hasDecl?DECL:''),place:declPlace,date:declDate},
-    isFresher,hasProfile,hasDecl
-  };
+  const yearRe=/(?:19|20)\d{2}(?:\s*[-–/]\s*(?:(?:19|20)\d{2}|present))?/i;
+  eduLines.forEach(line=>{
+    if(/^(qualification|degree|institution|university|board|year|marks|percentage)/i.test(line))return;
+    let cells=line.split(/\t+|\s{2,}|\s*\|\s*/).map(x=>x.trim()).filter(Boolean);
+    if(cells.length<2){const y=line.match(yearRe);if(y){const left=line.slice(0,y.index).split(/,\s*/).filter(Boolean);const right=line.slice(y.index+y[0].length).trim();cells=[...left,y[0],right].filter(Boolean)}}
+    if(cells.length>=2){const yr=cells.find(x=>yearRe.test(x))||'';const marks=cells.find(x=>x!==yr&&/(%|cgpa|gpa|\/\s*\d)/i.test(x))||'';const vals=cells.filter(x=>x!==yr&&x!==marks);education.push({degree:vals[0]||'',school:vals[1]||'',board:vals[2]||'',start:'',end:yr?(yr.match(yearRe)||[''])[0]:'',marks});}
+  });
+  const profile={father:label(["father'?s name",'father name']),dob:label(['date of birth','dob']),languages:label(['languages known','languages']),gender:label(['sex','gender']),marital:label(['marital status']),nationality:label(['nationality']),strengths:label(['strengths','strength'])};
+  get(/personal profile|personal details/).forEach(line=>{const m=line.match(/^([^:：]+)\s*[:：]\s*(.+)$/);if(!m)return;const k=norm(m[1]),v=m[2].trim();if(/father/.test(k))profile.father=profile.father||v;else if(/dob|birth/.test(k))profile.dob=profile.dob||v;else if(/language/.test(k))profile.languages=profile.languages||v;else if(/sex|gender/.test(k))profile.gender=profile.gender||v;else if(/marital/.test(k))profile.marital=profile.marital||v;else if(/nationality/.test(k))profile.nationality=profile.nationality||v;else if(/strength/.test(k))profile.strengths=profile.strengths||v});
+  const declLines=get(/^declaration$/);const declText=declLines.filter(x=>!/^\s*(place|date|signature)\s*[:：]/i.test(x)).join(' ');
+  const place=label(['place']),date=label(['date']);
+  const langs=label(['languages known']);
+  if(langs&&!profile.languages)profile.languages=langs;
+  const hasFresher=/career objective|personal profile|declaration|father'?s name|university\s*\/\s*board|marks\s*\/?%/i.test(raw);
+  return {name,role,email,phone,link,location:address,text:raw,summary,skills,exp,education,profile,decl:{text:declText,place,date},hasFresher};
 }
-
-function importInto(r,P,mode){
-  // mode: "details" = fill fields only (builder upload)
-  //       "template" = apply layout/style + fill fields (themes page upload)
-  mode=mode||'details';
+function importInto(r,P){
   const p=r.personal;
-  if(P.name)p.name=P.name;
-  if(P.role)p.role=P.role;
-  if(P.email)p.email=P.email;
-  if(P.phone)p.phone=P.phone;
-  if(P.link)p.link=P.link;
-  if(P.location)p.location=P.location;
+  ['name','role','email','phone','link','location'].forEach(k=>{if(P[k])p[k]=P[k]});
   if(P.summary)r.summary=P.summary;
   if(P.skills)r.skills=P.skills;
-  // Experience
-  if(P.exp&&P.exp.length&&r.experience.every(e=>!e.role&&!e.company&&!e.desc)){
-    r.experience=[{role:'',company:'',start:'',end:'',desc:P.exp.join('\n')}];
-  }
-  // Education – replace empty entries
-  if(P.education&&P.education.length){
-    const empty=r.education.every(e=>!e.degree&&!e.school);
-    if(empty)r.education=P.education.map(e=>({
-      degree:e.degree||'',school:e.school||'',board:e.board||'',
-      start:e.start||'',end:e.end||'',marks:e.marks||''
-    }));
-  }
-  // Personal profile data
-  if(P.profile){
-    if(!r.profile)r.profile={father:'',dob:'',languages:'',gender:'',marital:'',nationality:'',strengths:''};
-    ['father','dob','languages','gender','marital','nationality','strengths'].forEach(k=>{
-      if(P.profile[k])r.profile[k]=P.profile[k];
-    });
-  }
-  // Declaration data
-  if(P.decl){
-    if(!r.decl)r.decl={text:DECL,place:'',date:''};
-    if(P.decl.text)r.decl.text=P.decl.text;
-    if(P.decl.place)r.decl.place=P.decl.place;
-    if(P.decl.date)r.decl.date=P.decl.date;
-  }
+  if(P.exp&&P.exp.length&&r.experience.every(e=>!e.role&&!e.company&&!e.desc))r.experience=[{role:'',company:'',start:'',end:'',desc:P.exp.join('\n')}];
+  if(P.education&&P.education.length){const rows=P.education.filter(e=>e.degree||e.school||e.board);if(rows.length)r.education=rows;}
+  if(P.profile)Object.keys(P.profile).forEach(k=>{if(P.profile[k])r.profile[k]=P.profile[k]});
+  if(P.decl){if(P.decl.text)r.decl.text=P.decl.text;if(P.decl.place)r.decl.place=P.decl.place;if(P.decl.date)r.decl.date=P.decl.date;}
+  if(P.hasFresher){r.theme=mkTheme('fresher');r.theme.photo=!!r.photo;}
   if(P.name&&/^Untitled/.test(r.title))r.title=P.name+(r.type==='cv'?' CV':' resume');
-
-  // ---- Theme / layout ----
-  if(mode==='template'){
-    // Themes page: match style of the uploaded resume as closely as possible
-    if(P.isFresher){
-      // Classic Indian fresher layout (photo, edu table, checklist skills, profile, declaration)
-      r.theme=mkTheme('fresher');
-      r.theme.profile=true;
-      r.theme.declaration=true;
-      r.theme.photo=true;
-      r.theme.eduTable=true;
-      r.theme.skillsCheck=true;
-      r.theme.nameLine=true;
-      r.theme.thick=true;
-      r.theme.caps=true;
-      r.theme.head='text';
-      r.theme.align='left';
-      r.theme.font='sans';
-      if(!r.decl.date)r.decl.date=todayStr();
-    }else if(P.hasProfile||P.hasDecl){
-      // Hybrid – profile/declaration present but has experience
-      r.theme=mkTheme('fresherBar');
-      r.theme.profile=!!P.hasProfile;
-      r.theme.declaration=!!P.hasDecl;
-      r.theme.photo=true;
-      r.theme.eduTable=!!(P.education&&P.education.length>=2);
-      r.theme.skillsCheck=true;
-    }else{
-      // Modern / professional style
-      r.theme=mkTheme('modern');
-      if(P.education&&P.education.length>=2)r.theme.eduTable=true;
-    }
-    r.theme.preset='custom'; // so accent colour from image sticks
-  }else{
-    // Builder upload: DETAILS ONLY — never replace the active theme/preset
-    if(P.hasProfile||(P.profile&&(P.profile.father||P.profile.dob||P.profile.gender))){
-      r.theme.profile=true;
-    }
-    if(P.hasDecl||(P.decl&&(P.decl.text||P.decl.place||P.decl.date))){
-      r.theme.declaration=true;
-      if(!r.decl.date)r.decl.date=todayStr();
-    }
-  }
 }
 function hueOf(r,g,b){const mx=Math.max(r,g,b),mn=Math.min(r,g,b),d=mx-mn;if(!d)return 0;const h=(mx===r?((g-b)/d)%6:mx===g?(b-r)/d+2:(r-g)/d+4)*60;return h<0?h+360:h}
 async function accentFromFile(file){
   try{
-    const c=await fileToCanvas(file,200,0),d=c.getContext('2d').getImageData(0,0,c.width,c.height).data,B={},dark={n:0,r:0,g:0,b:0};
+    const c=await fileToCanvas(file,200,0),d=c.getContext('2d').getImageData(0,0,c.width,c.height).data,B={};
     for(let i=0;i<d.length;i+=16){
       const r=d[i],g=d[i+1],b=d[i+2],mx=Math.max(r,g,b),mn=Math.min(r,g,b),sat=mx?(mx-mn)/mx:0;
-      // colourful accent candidates
-      if(sat>=.28&&mx>=50){
-        const k=Math.floor(hueOf(r,g,b)/30)%12,o=B[k]||(B[k]={n:0,r:0,g:0,b:0});o.n+=sat;o.r+=r*sat;o.g+=g*sat;o.b+=b*sat;
-      }
-      // dark ink (classic black/navy headers)
-      if(mx<90&&mx>15&&sat<.25){dark.n+=1;dark.r+=r;dark.g+=g;dark.b+=b}
+      if(sat<.35||mx<60)continue;
+      const k=Math.floor(hueOf(r,g,b)/30)%12,o=B[k]||(B[k]={n:0,r:0,g:0,b:0});o.n+=sat;o.r+=r*sat;o.g+=g*sat;o.b+=b*sat;
     }
-    const best=Object.values(B).sort((x,y)=>y.n-x.n)[0];
-    if(best&&best.n>0.5){
-      let rgb=[best.r,best.g,best.b].map(v=>v/best.n);
-      if(0.299*rgb[0]+0.587*rgb[1]+0.114*rgb[2]>190)rgb=rgb.map(v=>v*.7);
-      return '#'+rgb.map(v=>Math.round(Math.min(255,v)).toString(16).padStart(2,'0')).join('');
-    }
-    // fallback: near-black classic resume
-    if(dark.n>30){
-      const rgb=[dark.r,dark.g,dark.b].map(v=>Math.round(v/dark.n));
-      return '#'+rgb.map(v=>v.toString(16).padStart(2,'0')).join('');
-    }
-    return null;
+    const best=Object.values(B).sort((x,y)=>y.n-x.n)[0];if(!best)return null;
+    let rgb=[best.r,best.g,best.b].map(v=>v/best.n);
+    if(0.299*rgb[0]+0.587*rgb[1]+0.114*rgb[2]>190)rgb=rgb.map(v=>v*.7);
+    return '#'+rgb.map(v=>Math.round(v).toString(16).padStart(2,'0')).join('');
   }catch(e){return null}
 }
 const upl=(target,label)=>`<label class="btn soft upl">${icon('upload',16)}<span>${label}</span><input type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/png" data-ocr="${target}"></label>`;
@@ -811,7 +591,7 @@ function okImage(f){
   if(/\.(heic|heif)$/i.test(name)||/heic|heif/.test(type))return false;
   return ['image/jpeg','image/jpg','image/png'].includes(type)||/\.(jpe?g|png)$/i.test(name);
 }
-const importCard=()=>`<div class="card fs"><h3>Start from a photo</h3><p class="hint" style="margin:0 0 10px">Already have a resume? Upload a photo or screenshot — we fill only the details (name, education, skills, profile, declaration…). Your current theme and colours stay the same.</p>${upl('builder.import','Upload resume image')}</div>`;
+const importCard=()=>`<div class="card fs"><h3>Start from a photo</h3><p class="hint" style="margin:0 0 10px">Already have a resume? Upload a photo or screenshot and we fill in your details. Check and edit everything afterwards.</p>${upl('builder.import','Upload resume image')}</div>`;
 async function ocrTarget(t,file){
   if(!okImage(file)){toast('Please choose a JPG or PNG photo or screenshot (under 25 MB).');track('upload_failed',{target:t,why:'type'});return}
   track('image_upload',{target:t});if(/(\.resume|\.text|builder\.import|tpl\.image)$/.test(t))track('resume_uploaded',{target:t});
@@ -827,8 +607,8 @@ async function ocrTarget(t,file){
    case 'ob.resume':if(P.skills)f.ob.skills=P.skills;if(P.role&&!f.ob.role)f.ob.role=P.role;$('#main').innerHTML=vObjective();toast('Details added from your resume.');break;
    case 'si.resume':if(P.name)f.si.name=P.name;if(P.role)f.si.role=P.role;f.si.bg=P.summary||P.skills||text.replace(/\s+/g,' ').slice(0,400);$('#main').innerHTML=vIntro();toast('Details added from your resume.');break;
    case 'iv.resume':if(P.role)f.iv.role=P.role;$('#main').innerHTML=vInterview();toast(P.role?'Role added from your resume.':'Could not find a job title. Type the role yourself.');break;
-   case 'builder.import':if(!S.cur)return;importInto(S.cur,P,'details');{const ti=$('#titleIn');if(ti)ti.value=S.cur.title}renderForm();renderPreview();touch();toast('Details filled from your resume. Theme unchanged — check Education & Profile.');break;
-   case 'tpl.image':{const r=blank('resume'),acc=await accentFromFile(file);importInto(r,P,'template');if(acc){r.theme.accent=acc;r.theme.preset='custom'}go('builder',{cur:r});toast(P.isFresher?'Fresher Classic style + details applied. Review and edit.':'Style matched from your photo + details filled. Tweak theme if needed.');break}
+   case 'builder.import':if(!S.cur)return;importInto(S.cur,P);{const ti=$('#titleIn');if(ti)ti.value=S.cur.title}renderForm();renderPreview();touch();toast('Details added. Check Experience and Education and fill in anything missing.');break;
+   case 'tpl.image':{const r=blank('resume'),acc=await accentFromFile(file);importInto(r,P);if(acc){r.theme.accent=acc;r.theme.preset='custom'}go('builder',{cur:r});toast('Resume started from your photo. Pick the closest theme and edit anything.');break}
   }
 }
 
