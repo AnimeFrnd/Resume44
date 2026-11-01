@@ -60,7 +60,7 @@ async function saveKey(k,v){
   return ok;
 }
 /* ---------- optional backend (accounts, analytics, AI proxy, admin templates) ---------- */
-const API_BASE=(window.R44_API||'').replace(/\/$/,'');
+const API_BASE=(window.R44_API||'AQ.Ab8RN6K9z_lNfhKrv6-2tS2IpBpGalqDmqML5tiYXk4XfLQAbA').replace(/\/$/,'');
 const BK={on:false,ai:false,token:'',user:null,device:''};
 async function api(path,opt={}){
   const h={'Content-Type':'application/json'};if(BK.token)h.Authorization='Bearer '+BK.token;
