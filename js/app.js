@@ -95,7 +95,7 @@ const persistMeta=()=>{clearTimeout(metaT);metaT=setTimeout(()=>saveKey('r44:met
 
 /* ---------- themes ---------- */
 const BASE={accent:'#1d5be0',head:'underline',font:'sans',align:'left',fresher:false,photo:false,eduTable:false,skillsCheck:false,nameLine:false,thick:false,caps:false,profile:false,declaration:false};
-const FR={fresher:true,photo:true,eduTable:true,skillsCheck:true,caps:true,profile:true,declaration:true};
+const FR={fresher:true,photo:true,eduTable:true,skillsCheck:true,nameLine:true,thick:true,caps:true,profile:true,declaration:true};
 const PRESETS={
  modern:{name:'Modern Blue',...BASE},
  classic:{name:'Classic Serif',...BASE,accent:'#1a2238',font:'serif',align:'center',caps:true},
@@ -127,7 +127,7 @@ const DECL='I hereby declare that the details above are correct and true to the 
 /* ---------- state ---------- */
 const S={view:'home',resumes:[],templates:[],pub:[],gallery:null,cur:null,tab:'edit',shareOpen:false,sh:{name:'',author:'',sample:false,code:''},
   f:{cl:{tone:'Professional'},ats:{},iv:{level:'Mid-level',type:'Mixed'},ob:{level:'Fresher'},si:{ctx:'Job interview',len:'60 seconds'},imp:{},acc:{mode:'login'}},featured:[],out:{},ats:null,delArm:null};
-const blank=(type='resume')=>({id:uid(),type,title:type==='cv'?'Untitled CV':'Untitled resume',theme:mkTheme('modern'),updated:Date.now(),saved:false,photo:'',
+const blank=(type='resume')=>({id:uid(),type,title:type==='cv'?'Untitled CV':'Untitled resume',theme:mkTheme('fresher'),updated:Date.now(),saved:false,photo:'',
   personal:{name:'',role:'',email:'',phone:'',location:'',link:''},summary:'',
   experience:[{role:'',company:'',start:'',end:'',desc:''}],education:[{degree:'',school:'',board:'',start:'',end:'',marks:''}],
   projects:[],skills:'',certs:'',languages:'',awards:'',
