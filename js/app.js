@@ -224,7 +224,7 @@ function vBuilder(){
   return `<div class="bhead"><input id="titleIn" data-path="title" value="${esc(r.title)}" aria-label="Document name">
     <button class="btn sm" data-act="sample">Try sample data</button>
     <button class="btn sm" data-act="save">${icon('check',16)}Save</button>
-    <button class="btn sm pri" data-act="pdf">${icon('download',16)}Download PDF</button></div>
+    <button class="btn sm pri" data-act="pdf">${icon('download',16)}Download PDF</button><button class="btn sm" data-act="docx">Download DOCX</button></div>
    <div class="tabs"><button class="${S.tab==='edit'?'on':''}" data-act="tab" data-v="edit">Edit</button><button class="${S.tab==='prev'?'on':''}" data-act="tab" data-v="prev">Preview</button></div>
    <div class="builder" id="builder" data-tab="${S.tab}">
      <div class="form" id="form"></div>
@@ -238,6 +238,7 @@ function themeCard(){
   const t=S.cur.theme,sh=S.sh;
   return `<div class="card fs"><h3>Theme and layout</h3>
    <div class="pres" role="group" aria-label="Themes">${Object.entries(PRESETS).map(([id,p])=>`<button class="pre ${t.preset===id?'on':''}" data-act="preset" data-v="${id}"><i style="background:${p.accent}"></i>${p.name}</button>`).join('')}</div>
+   <div class="row" style="margin:8px 0"><button class="btn soft" data-act="atsMode">✓ Make this resume ATS-friendly</button><span class="hint">Removes photo and uses a simple single-column style.</span></div>
    <div class="sub-t">Heading style</div>
    <div class="seg" role="group" aria-label="Heading style">${HEADS.map(([k,l])=>`<button data-act="head" data-v="${k}" class="${t.head===k?'on':''}">${l}</button>`).join('')}</div>
    <div class="sub-t">Accent colour</div>
@@ -296,7 +297,7 @@ function renderForm(){
     ${inp('Strengths','profile.strengths','Quick learner, self-motivated')}</div>`:''}
   ${t.declaration?`<div class="card fs"><h3>Declaration</h3>${area('','decl.text','','',2)}
     <div class="two">${inp('Place','decl.place')}${inp('Date','decl.date','24-03-2026')}</div></div>`:''}
-  <div class="row" style="margin-bottom:20px"><button class="btn pri" data-act="save">${icon('check',16)}Save to My Resumes</button><button class="btn" data-act="pdf">${icon('download',16)}Download PDF</button></div>`;
+  <div class="row" style="margin-bottom:20px"><button class="btn pri" data-act="save">${icon('check',16)}Save to My Resumes</button><button class="btn" data-act="pdf">${icon('download',16)}Download PDF</button><button class="btn" data-act="docx">Download DOCX</button></div>`;
   window.scrollTo(0,y);
 }
 
@@ -415,7 +416,7 @@ const coverOut=()=>`<div class="card"><label class="f"><span>Your letter (you ca
   <div class="row"><button class="btn" data-act="copy" data-t="clText">${icon('copy',16)}Copy</button><button class="btn pri" data-act="pdfCover">${icon('download',16)}Download PDF</button></div></div>`;
 function vATS(){
   return head('ATS Resume Checker','Upload a photo of your resume and, if you like, the job post. We check what applicant tracking systems look for.')+
-  `<div class="card">${resPick()}<div class="row" style="margin-bottom:6px">${upl('ats.text','Upload resume photo')}</div><div class="hint" style="margin:0 0 12px">Take a photo or upload a screenshot. We read the text for you, and you can fix anything below.</div>${fta('Resume text','ats.text','Your resume text appears here after you upload a photo…',9)}<div class="row" style="margin-bottom:12px">${upl('ats.jd','Upload job post photo')}</div>${fta('Job description (optional, but gives a keyword match)','ats.jd','Optional: upload a photo of the job post…',6)}
+  `<div class="card">${resPick()}<div class="row" style="margin-bottom:6px">${upl('ats.text','Upload PDF / DOCX / Image')}</div><div class="hint" style="margin:0 0 12px">Upload a text PDF or DOCX for best extraction, or use an image/scanned PDF with OCR. Review the extracted text before checking.</div>${fta('Resume text','ats.text','Your resume text appears here after you upload a photo…',9)}<div class="row" style="margin-bottom:12px">${upl('ats.jd','Upload job description file / image')}</div>${fta('Job description (optional, but gives a keyword match)','ats.jd','Optional: upload a PDF, DOCX or image of the job post…',6)}
    <button class="btn pri" data-act="runATS">${icon('shield',16)}Check my resume</button></div>
    <div class="out" id="atsOut">${S.ats?atsOut():''}</div>`;
 }
@@ -584,20 +585,86 @@ async function accentFromFile(file){
     return '#'+rgb.map(v=>Math.round(v).toString(16).padStart(2,'0')).join('');
   }catch(e){return null}
 }
-const upl=(target,label)=>`<label class="btn soft upl">${icon('upload',16)}<span>${label}</span><input type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/png" data-ocr="${target}"></label>`;
+const upl=(target,label)=>`<label class="btn soft upl">${icon('upload',16)}<span>${label}</span><input type="file" accept=".jpg,.jpeg,.png,.pdf,.docx,image/jpeg,image/png,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" data-ocr="${target}"></label>`;
 function okImage(f){
   if(!f||f.size>25*1024*1024)return false;
   const name=String(f.name||'').toLowerCase(),type=String(f.type||'').toLowerCase();
   if(/\.(heic|heif)$/i.test(name)||/heic|heif/.test(type))return false;
   return ['image/jpeg','image/jpg','image/png'].includes(type)||/\.(jpe?g|png)$/i.test(name);
 }
-const importCard=()=>`<div class="card fs"><h3>Start from a photo</h3><p class="hint" style="margin:0 0 10px">Already have a resume? Upload a photo or screenshot and we fill in your details. Check and edit everything afterwards.</p>${upl('builder.import','Upload resume image')}</div>`;
+const importCard=()=>`<div class="card fs"><h3>Import an existing resume</h3><p class="hint" style="margin:0 0 10px">Upload PDF, DOCX, JPG or PNG. We extract text and fill the editable fields. Always review the result.</p>${upl('builder.import','Upload PDF / DOCX / Image')}<p class="hint">For best ATS results, use a text-based PDF or DOCX. Scanned images may contain OCR mistakes.</p><div class="row" style="margin-top:10px"><b>✨ Clone a resume design</b></div>${upl('tpl.clone','Upload resume image to match its style')}<p class="hint">We estimate its font family, accent colour and heading style, then recreate an editable version. Exact font identification is not guaranteed.</p></div>`;
+async function readResumeFile(file){
+  const name=String(file.name||'').toLowerCase(),type=String(file.type||'').toLowerCase();
+  if(file.size>25*1024*1024)throw new Error('File is larger than 25 MB.');
+  if(name.endsWith('.pdf')||type==='application/pdf'){
+    if(!window.pdfjsLib)await loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');
+    const pdfjs=window.pdfjsLib;if(!pdfjs)throw new Error('PDF reader could not load.');
+    pdfjs.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    const data=new Uint8Array(await file.arrayBuffer()),pdf=await pdfjs.getDocument({data}).promise;let all='';
+    for(let n=1;n<=Math.min(pdf.numPages,20);n++){const page=await pdf.getPage(n),c=await page.getTextContent();all+=c.items.map(x=>x.str).join(' ')+'\n';}
+    if(all.replace(/\s/g,'').length>20)return all;
+    // Scanned PDF: render each page to canvas and OCR it.
+    const T=await getTess();all='';
+    for(let n=1;n<=Math.min(pdf.numPages,8);n++){const page=await pdf.getPage(n),vp=page.getViewport({scale:1.7}),c=document.createElement('canvas');c.width=vp.width;c.height=vp.height;await page.render({canvasContext:c.getContext('2d'),viewport:vp}).promise;const o=await T.recognize(c,'eng');all+=(o.data.text||'')+'\n';}
+    return all.trim();
+  }
+  if(name.endsWith('.docx')||type.includes('wordprocessingml')){
+    if(!window.mammoth)await loadScript('https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.8.0/mammoth.browser.min.js');
+    if(!window.mammoth)throw new Error('DOCX reader could not load.');
+    const out=await window.mammoth.extractRawText({arrayBuffer:await file.arrayBuffer()});return (out.value||'').trim();
+  }
+  if(okImage(file))return readImage(file);
+  throw new Error('Please upload a PDF, DOCX, JPG or PNG file.');
+}
+async function inferResumeStyle(file,r){
+  const accent=await accentFromFile(file);
+  const c=await fileToCanvas(file,700,0),d=c.getContext('2d').getImageData(0,0,c.width,c.height).data;
+  let dark=0,total=0,colour=0;
+  for(let i=0;i<d.length;i+=32){const R=d[i],G=d[i+1],B=d[i+2],lum=.299*R+.587*G+.114*B;total++;if(lum<115)dark++;if(Math.max(R,G,B)-Math.min(R,G,B)>55)colour++;}
+  const monochrome=colour/Math.max(1,total)<.07;
+  r.theme=mkTheme(monochrome?'fresher':'modern');
+  r.theme.accent=accent|| (monochrome?'#111111':'#1d5be0');
+  r.theme.font=monochrome?'serif':'sans';
+  r.theme.align='left';r.theme.photo=false;
+  r.theme.eduTable=false;r.theme.skillsCheck=false;
+  r.theme.head=monochrome?'text':'underline';
+  r.theme.nameLine=monochrome;r.theme.thick=false;
+  r.theme.preset='custom';
+}
+async function exportDOCX(r){
+  try{
+    if(!window.docx)await loadScript('https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js');
+    const D=window.docx;if(!D||!D.Document||!D.Packer)throw new Error('DOCX library could not load. Check your internet connection.');
+    const p=r.personal,t=r.theme,accent=(t.accent||'#1d5be0').replace('#','').toUpperCase();
+    const children=[];
+    const para=(text,opts={})=>new D.Paragraph({children:[new D.TextRun({text:String(text||''),bold:!!opts.bold,italics:!!opts.italics,size:opts.size||20,color:opts.color||'222222',font:opts.font|| (t.font==='serif'?'Georgia':'Arial')})],spacing:{after:opts.after??100},alignment:opts.align||D.AlignmentType.LEFT});
+    const heading=text=>{children.push(new D.Paragraph({children:[new D.TextRun({text:String(text).toUpperCase(),bold:true,size:24,color:accent,font:t.font==='serif'?'Georgia':'Arial'})],heading:D.HeadingLevel.HEADING_2,spacing:{before:220,after:100},border:{bottom:{color:accent,space:4,size:6,style:D.BorderStyle.SINGLE}}}));};
+    if(p.name)children.push(para(p.name,{bold:true,size:34,color:accent,align:t.align==='center'?D.AlignmentType.CENTER:D.AlignmentType.LEFT,after:70}));
+    if(p.role)children.push(para(p.role,{size:22,align:t.align==='center'?D.AlignmentType.CENTER:D.AlignmentType.LEFT,after:70}));
+    const contact=[p.email,p.phone,p.location,p.link].filter(Boolean).join(' | ');if(contact)children.push(para(contact,{size:18,align:t.align==='center'?D.AlignmentType.CENTER:D.AlignmentType.LEFT,after:180}));
+    const T=titles(r);
+    order(r).forEach(k=>{
+      heading(T[k]||k);
+      if(k==='summary'&&r.summary)children.push(para(r.summary));
+      else if(k==='experience')r.experience.filter(e=>e.role||e.company||e.desc).forEach(e=>{children.push(para([e.role,[e.start,e.end].filter(Boolean).join(' – ')].filter(Boolean).join('     '),{bold:true}));if(e.company)children.push(para(e.company,{italics:true}));lines(e.desc).forEach(x=>children.push(para('• '+x,{after:50})));});
+      else if(k==='education')r.education.filter(e=>e.degree||e.school).forEach(e=>children.push(para([e.degree,e.school,e.board,e.end||e.start,e.marks].filter(Boolean).join(' | '))));
+      else if(k==='projects')r.projects.filter(x=>x.name||x.desc).forEach(x=>children.push(para([x.name,x.desc].filter(Boolean).join(' — '))));
+      else if(k==='skills')skillList(r).forEach(x=>children.push(para('• '+x,{after:45})));
+      else if(k==='certs'||k==='awards'||k==='languages'){lines(r[k]).forEach(x=>children.push(para(x)));if(k==='languages'&&!lines(r.languages).length&&r.languages)children.push(para(r.languages));}
+      else if(k==='profile')profRows(r).forEach(([a,b])=>children.push(para(a+': '+b)));
+      else if(k==='declaration'){if(r.decl.text)children.push(para(r.decl.text));if(r.decl.place)children.push(para('Place: '+r.decl.place));if(r.decl.date)children.push(para('Date: '+r.decl.date));}
+    });
+    const doc=new D.Document({sections:[{properties:{page:{size:{width:11906,height:16838},margin:{top:850,right:900,bottom:850,left:900}}},children}]});
+    const blob=await D.Packer.toBlob(doc),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=(p.name||r.title||'resume').replace(/[^\w-]+/g,'_')+'_Resume.docx';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2000);track('docx_download');toast('DOCX downloaded. You can edit it in Word or Google Docs.');
+  }catch(e){console.error(e);toast(e.message||'Could not create DOCX. Please try again.');}
+}
 async function ocrTarget(t,file){
-  if(!okImage(file)){toast('Please choose a JPG or PNG photo or screenshot (under 25 MB).');track('upload_failed',{target:t,why:'type'});return}
-  track('image_upload',{target:t});if(/(\.resume|\.text|builder\.import|tpl\.image)$/.test(t))track('resume_uploaded',{target:t});
-  toast('Reading your image…',0);
+  const fn=String(file.name||'').toLowerCase(),isSupported=okImage(file)||fn.endsWith('.pdf')||fn.endsWith('.docx')||file.type==='application/pdf'||String(file.type||'').includes('wordprocessingml');
+  if(!isSupported||file.size>25*1024*1024){toast('Please upload PDF, DOCX, JPG or PNG (under 25 MB).');track('upload_failed',{target:t,why:'type'});return}
+  track('resume_uploaded',{target:t,format:fn.split('.').pop()});
+  toast('Reading your resume…',0);
   let text='';
-  try{text=await readImage(file)}catch(e){console.error(e);if(t!=='tpl.image'){track('upload_failed',{target:t,why:'read'});toast('Could not read that image. Try a clearer JPG or PNG and check your connection.');return}}
+  try{text=await readResumeFile(file)}catch(e){console.error(e);track('upload_failed',{target:t,why:'read'});toast(e.message||'Could not read this file. Try another PDF, DOCX or clear image.');return}
   if(t!=='tpl.image'&&text.replace(/\s/g,'').length<15){toast('No readable text found. Try a sharper, well-lit photo.');return}
   const P=parseResume(text),f=S.f;
   switch(t){
@@ -608,7 +675,8 @@ async function ocrTarget(t,file){
    case 'si.resume':if(P.name)f.si.name=P.name;if(P.role)f.si.role=P.role;f.si.bg=P.summary||P.skills||text.replace(/\s+/g,' ').slice(0,400);$('#main').innerHTML=vIntro();toast('Details added from your resume.');break;
    case 'iv.resume':if(P.role)f.iv.role=P.role;$('#main').innerHTML=vInterview();toast(P.role?'Role added from your resume.':'Could not find a job title. Type the role yourself.');break;
    case 'builder.import':if(!S.cur)return;importInto(S.cur,P);{const ti=$('#titleIn');if(ti)ti.value=S.cur.title}renderForm();renderPreview();touch();toast('Details added. Check Experience and Education and fill in anything missing.');break;
-   case 'tpl.image':{const r=blank('resume'),acc=await accentFromFile(file);importInto(r,P);if(acc){r.theme.accent=acc;r.theme.preset='custom'}go('builder',{cur:r});toast('Resume started from your photo. Pick the closest theme and edit anything.');break}
+   case 'tpl.image':{const r=blank('resume'),acc=okImage(file)?await accentFromFile(file):null;importInto(r,P);if(acc){r.theme.accent=acc;r.theme.preset='custom'}go('builder',{cur:r});toast('Resume started from your photo. Pick the closest theme and edit anything.');break}
+   case 'tpl.clone':{if(!okImage(file)){toast('For Clone Design, upload a JPG or PNG resume image.');break}const r=blank('resume');importInto(r,P);await inferResumeStyle(file,r);go('builder',{cur:r});toast('Closest editable style created. Review the layout and extracted details.');break}
   }
 }
 
@@ -879,6 +947,7 @@ const ACT={
  dupRes:b=>{const o=S.resumes.find(r=>r.id===b.dataset.id),c=JSON.parse(JSON.stringify(o));c.id=uid();c.title=o.title+' (copy)';c.updated=Date.now();S.resumes.unshift(c);persist();render();toast('Duplicated')},
  delRes:b=>{const id=b.dataset.id;if(S.delArm===id){S.resumes=S.resumes.filter(r=>r.id!==id);if(S.cur&&S.cur.id===id)S.cur=null;S.delArm=null;persist();toast('Deleted')}else S.delArm=id;render()},
  pdfRes:b=>{const r=S.resumes.find(x=>x.id===b.dataset.id);checkLatin(r);resumePDF(r)},
+ docx:()=>{if(S.cur)exportDOCX(S.cur)},
  tab:b=>{S.tab=b.dataset.v;$('#builder').dataset.tab=S.tab;document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('on',x.dataset.v===S.tab));window.scrollTo(0,0)},
  sample:()=>{const o=S.cur,s=sample(o.type);Object.assign(s,{id:o.id,theme:o.theme,photo:o.photo,saved:o.saved});if(o.theme.profile&&!s.decl.date)s.decl.date=todayStr();S.cur=s;$('#titleIn').value=s.title;renderForm();renderPreview();toast('Sample loaded. Edit anything you like.')},
  pdfSave:async()=>{try{if(await pdfNative()){countDl();toast('PDF saved to Documents');return}}catch(e){console.error(e);track('pdf_failed',{why:'native'})}
@@ -898,6 +967,7 @@ const ACT={
  save:()=>saveCur(),
  pdf:()=>{checkLatin(S.cur);resumePDF(S.cur);if(S.cur.saved)touch()},
  /* theme */
+ atsMode:()=>{if(!S.cur)return;S.cur.theme=mkTheme('classic');S.cur.theme.photo=false;S.cur.photo='';S.cur.theme.align='left';S.cur.theme.fresher=false;S.cur.theme.eduTable=false;S.cur.theme.skillsCheck=false;S.cur.theme.profile=false;S.cur.theme.declaration=false;S.cur.theme.hide=S.cur.theme.hide||{};themeChanged();toast('ATS-friendly layout applied. Photo removed; use simple headings and one column.')},
  preset:b=>{track('template_used',{tpl:b.dataset.v});S.cur.theme=mkTheme(b.dataset.v);if(S.cur.theme.declaration&&!S.cur.decl.date)S.cur.decl.date=todayStr();themeChanged()},
  head:b=>{S.cur.theme.head=b.dataset.v;custom();themeChanged()},
  accent:b=>{S.cur.theme.accent=b.dataset.v;custom();themeChanged()},
