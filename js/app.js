@@ -59,6 +59,14 @@ async function saveKey(k,v){
   try{if(hasWS()){await window.storage.set(k,s);ok=true}}catch(e){}
   return ok;
 }
+/* ---------- AI mode (master switch) ---------- */
+const AIM={on:true};
+const swHTML=()=>`<span class="swlbl">AI</span><span class="sw ${AIM.on?'on':''}" aria-hidden="true"><i></i></span><span class="swst">${AIM.on?'ON':'OFF'}</span>`;
+function paintAI(){
+  document.body.classList.toggle('ai-off',!AIM.on);
+  const h=$('#aiSw');if(h){h.innerHTML=swHTML();h.setAttribute('aria-checked',AIM.on)}
+  const d=$('#aiSwSide');if(d){d.innerHTML=swHTML();d.setAttribute('aria-checked',AIM.on)}
+}
 /* ---------- optional backend (accounts, analytics, AI proxy, admin templates) ---------- */
 const API_BASE=(window.R44_API||'AQ.Ab8RN6K9z_lNfhKrv6-2tS2IpBpGalqDmqML5tiYXk4XfLQAbA').replace(/\/$/,'');
 const BK={on:false,ai:false,token:'',user:null,device:''};
@@ -178,6 +186,8 @@ function navItems(){
   const b=[['home','Home','home'],['builder','Build','file'],['templates','Themes','layout'],['ats','ATS','shield'],['resumes','Resumes','folder']];
   $('#bottom').innerHTML=b.map(([id,l,ic])=>`<button class="${(id==='home'?S.view==='home':isOn(id))?'on':''}" data-act="nav" data-v="${id}">${icon(ic,22)}${l}</button>`).join('');
   $('#menuBtn').innerHTML=icon('menu');
+  $('#side').insertAdjacentHTML('beforeend','<hr><button class="nav aitog" id="aiSwSide" role="switch" data-act="aiToggle"></button>');
+  paintAI();
 }
 function go(v,opts={}){
   $('#side').classList.remove('open');$('#scrim').classList.remove('open');
@@ -505,6 +515,7 @@ function fileToCanvas(file,max=2000,min=1000){
     im.src=u});
 }
 async function visionText(c){
+  if(!AIM.on)throw new Error('AI mode is off');
   if(!(BK.on&&BK.ai))throw new Error('No OCR vision backend configured');
 
   const prompt = `You are an accurate resume OCR engine.
@@ -771,6 +782,7 @@ async function ocrTarget(t,file){
 
 /* ---------- AI ---------- */
 async function ai(prompt,system){
+  if(!AIM.on){const e=new Error('AI mode is off');e.code='aioff';throw e}
   track('ai_request');
   if(!API_BASE) {
     const e=new Error('AI backend is not configured');e.code='noai';
@@ -786,9 +798,10 @@ async function ai(prompt,system){
     e.code='noai';throw e;
   }
 }
-function aiMsg(e){return e&&e.code==='noai'?'AI is not connected yet (the app owner must add the API key on the server).':e&&e.code==='rate'?'Too many AI requests. Try again in a few minutes.':'AI is not available right now.'}
+function aiMsg(e){return e&&e.code==='aioff'?'AI mode is off. Turn it on from the AI switch to use this.':e&&e.code==='noai'?'AI is not connected yet (the app owner must add the API key on the server).':e&&e.code==='rate'?'Too many AI requests. Try again in a few minutes.':'AI is not available right now.'}
 function parseJSON(t){const c=t.replace(/```json|```/g,'').trim();const s=c.search(/[\[{]/);return JSON.parse(c.slice(s))}
 async function run(btn,fn,fb){
+  if(!AIM.on){if(fb){fb();toast('AI is off, so a quick template draft was used. Turn AI on for a tailored result.',4500)}else toast('AI mode is off. Turn it on to use this.',4000);return}
   const old=btn.innerHTML;btn.disabled=true;btn.innerHTML='<span class="spin"></span> Working…';
   try{await fn()}catch(e){console.error(e);const m=aiMsg(e);if(fb){fb();toast(m+' A template draft was used instead.',5000)}else toast(m+' Please try again.',5000)}
   btn.disabled=false;btn.innerHTML=old;
@@ -1053,6 +1066,8 @@ const ACT={
    catch(e){toast(e.status?e.message:'Could not reach the server. Check your connection.',5000)}
    b.disabled=false;b.innerHTML=old},
  logout:()=>{BK.token='';BK.user=null;saveKey('r44:auth','');toast('Logged out');go('account')},
+ aiToggle:()=>{AIM.on=!AIM.on;saveKey('r44:aimode',AIM.on);paintAI();track('ai_mode',{on:AIM.on});
+   toast(AIM.on?'AI mode ON: smart features enabled':'AI mode OFF: lightweight manual mode',2500)},
  save:()=>saveCur(),
  pdf:()=>{checkLatin(S.cur);resumePDF(S.cur);if(S.cur.saved)touch()},
  /* theme */
@@ -1186,6 +1201,7 @@ function resumeText(r){
 
 /* ---------- start ---------- */
 (async()=>{
+  AIM.on=(await loadKey('r44:aimode',true))!==false;
   S.resumes=(await loadKey('r44:resumes',[])).map(migrate);
   const m=await loadKey('r44:meta',{templates:[],pub:[]});
   S.templates=(m.templates||[]).map(t=>({id:t.id,payload:normPayload(t.payload)}));S.pub=m.pub||[];
