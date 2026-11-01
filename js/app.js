@@ -505,9 +505,63 @@ function fileToCanvas(file,max=2000,min=1000){
     im.src=u});
 }
 async function visionText(c){
-  if(BK.on&&BK.ai){const d=await api('/api/ai',{method:'POST',body:{prompt:'Transcribe all the text in this image in reading order. Keep line breaks. Output only the text, nothing else.',image:c.toDataURL('image/jpeg',.85).split(',')[1],max_tokens:1500}});return ((d&&d.text)||'').trim()}
-  // Without a configured server-side AI endpoint, use local OCR below.
-  throw new Error('No OCR vision backend configured');
+  if(!(BK.on&&BK.ai))throw new Error('No OCR vision backend configured');
+
+  const prompt = `You are an accurate resume OCR engine.
+
+Read the entire resume image from top to bottom and left to right.
+
+TRANSCRIBE EVERY VISIBLE DETAIL.
+Do not summarize, rewrite, guess or invent information.
+
+Preserve:
+- Full name and contact details
+- Phone numbers and email
+- Career objective and summary
+- Every experience and responsibility
+- Every education entry, university and marks
+- All skills
+- Projects and descriptions
+- Certifications
+- Languages
+- Awards and achievements
+- Personal details and declaration
+
+Use clear headings:
+NAME:
+ROLE:
+CONTACT:
+PROFESSIONAL SUMMARY:
+WORK EXPERIENCE:
+EDUCATION:
+SKILLS:
+PROJECTS:
+CERTIFICATIONS:
+LANGUAGES:
+AWARDS AND ACHIEVEMENTS:
+PERSONAL DETAILS:
+OTHER INFORMATION:
+
+Keep every bullet and date.
+Put each education entry on one line separated by |:
+Qualification | Institution | University/Board | Year | Marks/CGPA
+
+Do not omit information in sidebars, columns or footers.
+If something is unreadable, write [unclear].
+Output only the extracted text.`;
+
+  const d=await api('/api/ai',{
+    method:'POST',
+    body:{
+      prompt,
+      system:'Perform accurate visual transcription. Never summarize.',
+      image:c.toDataURL('image/jpeg',.85).split(',')[1],
+      max_tokens:5000
+    },
+    timeout:90000
+  });
+
+  return ((d&&d.text)||'').trim();
 }
 async function readImage(file){
   const c=await fileToCanvas(file);
@@ -516,15 +570,15 @@ async function readImage(file){
   const out=await T.recognize(c,'eng',{logger:m=>{if(m.status==='recognizing text')toast('Reading your image… '+Math.round(m.progress*100)+'%',0)}});
   return ((out&&out.data&&out.data.text)||'').trim();
 }
-const HEADRE=/^(professional\s+summary|career\s+objective|summary|objective|profile|about\s+me|technical\s+skills|key\s+skills|core\s+skills|skills|work\s+experience|professional\s+experience|experience|employment(?:\s+history)?|educational\s+qualifications?|education|academic\s+(?:qualifications?|details)|projects?|certifications?|languages?(?:\s+known)?|awards?(?:\s+and\s+achievements)?|achievements|personal\s+(?:profile|details)|declaration)$/i;
+const HEADRE=/^(name|role|contact|professional\s+summary|career\s+objective|summary|objective|profile|about\s+me|technical\s+skills|key\s+skills|core\s+skills|skills|work\s+experience|professional\s+experience|experience|employment(?:\s+history)?|educational\s+qualifications?|education|academic\s+(?:qualifications?|details)|projects?|certifications?|languages?(?:\s+known)?|awards?(?:\s+and\s+achievements)?|achievements|personal\s+(?:profile|details)|declaration|other\s+information)$/i;
 function parseResume(text){
   const raw=String(text||'').replace(/\r/g,'');
   const original=raw.split(/\n/).map(x=>x.trim()).filter(Boolean);
   const L=original.map(x=>x.replace(/\s+/g,' ').trim());
   const norm=s=>String(s||'').replace(/[:：\-–]\s*$/,'').trim().toLowerCase();
-  const email=(raw.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)||[''])[0];
-  const phone=(raw.match(/(?:\+?91[\s-]?)?[6-9]\d{9}|\+?\d[\d\s().-]{8,}\d/)||[''])[0].trim();
-  const link=(raw.match(/(?:https?:\/\/|www\.|linkedin\.com|github\.com)\S+/i)||[''])[0];
+  let email=(raw.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)||[''])[0];
+  let phone=(raw.match(/(?:\+?91[\s-]?)?[6-9]\d{9}|\+?\d[\d\s().-]{8,}\d/)||[''])[0].trim();
+  let link=(raw.match(/(?:https?:\/\/|www\.|linkedin\.com|github\.com)\S+/i)||[''])[0];
   const heading=l=>HEADRE.test(norm(l));
   const sections=[];let cur=null;
   original.forEach(line=>{const l=line.replace(/\s+/g,' ').trim();if(heading(l)){cur={key:norm(l),lines:[]};sections.push(cur)}else if(cur)cur.lines.push(l.replace(/^[-•●▪■*✓✔☑v]\s*/i,'').trim())});
@@ -532,10 +586,22 @@ function parseResume(text){
   const label=(aliases)=>{const re=new RegExp('^\\s*(?:'+aliases.join('|')+')\\s*[:：\\-]?\\s*(.*)$','i');for(const l of L){const m=l.match(re);if(m&&m[1])return m[1].trim()}return ''};
   const header=L.slice(0,Math.min(L.length,12));
   let name=header.find(l=>!/@/.test(l)&&!/^\+?\d[\d\s().-]{8,}$/.test(l)&&!heading(l)&&!/\b(resume|curriculum vitae)\b/i.test(l)&&l.split(/\s+/).length<=4&&/^[A-Za-z][A-Za-z .'-]+$/.test(l))||'';
+  // Prefer explicit NAME: line from structured OCR
+  const nameFromSec=get(/^name$/).join(' ').trim();
+  if(nameFromSec&&nameFromSec.length<60)name=nameFromSec.replace(/^name\s*[:：]?\s*/i,'');
   if(name&&name===name.toUpperCase())name=name.toLowerCase().replace(/\b[a-z]/g,m=>m.toUpperCase());
   const ni=header.findIndex(l=>l.toLowerCase()===name.toLowerCase());
-  const role=ni>=0?header.slice(ni+1,ni+4).find(l=>l!==email&&!/@/.test(l)&&!/\d{5,}/.test(l)&&l.length<65&&/^[A-Za-z &/,().-]+$/.test(l)&&!heading(l))||'':'';
+  let role=ni>=0?header.slice(ni+1,ni+4).find(l=>l!==email&&!/@/.test(l)&&!/\d{5,}/.test(l)&&l.length<65&&/^[A-Za-z &/,().-]+$/.test(l)&&!heading(l))||'':'';
+  const roleFromSec=get(/^role$/).join(' ').trim();
+  if(roleFromSec&&roleFromSec.length<80)role=roleFromSec.replace(/^role\s*[:：]?\s*/i,'');
   const address=label(['address','residential address','present address','location']);
+  const contactLines=get(/^contact$/);
+  if(contactLines.length){
+    const ct=contactLines.join(' ');
+    if(!email){const m=ct.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);if(m)email=m[0]}
+    if(!phone){const m=ct.match(/(?:\+?91[\s-]?)?[6-9]\d{9}|\+?\d[\d\s().-]{8,}\d/);if(m)phone=m[0].trim()}
+    if(!link){const m=ct.match(/(?:https?:\/\/|www\.|linkedin\.com|github\.com)\S+/i);if(m)link=m[0]}
+  }
   const summary=get(/^(professional summary|career objective|summary|objective|profile|about me)$/).join(' ').slice(0,1000);
   const skillLines=get(/skill/);
   const skills=skillLines.map(x=>x.replace(/^[✓✔☑vV\s]+(?=[A-Za-z])/,'').replace(/^[•●▪■*\-]+\s*/, '').trim()).filter(Boolean).join(', ').slice(0,900);
@@ -549,14 +615,30 @@ function parseResume(text){
     if(cells.length<2){const y=line.match(yearRe);if(y){const left=line.slice(0,y.index).split(/,\s*/).filter(Boolean);const right=line.slice(y.index+y[0].length).trim();cells=[...left,y[0],right].filter(Boolean)}}
     if(cells.length>=2){const yr=cells.find(x=>yearRe.test(x))||'';const marks=cells.find(x=>x!==yr&&/(%|cgpa|gpa|\/\s*\d)/i.test(x))||'';const vals=cells.filter(x=>x!==yr&&x!==marks);education.push({degree:vals[0]||'',school:vals[1]||'',board:vals[2]||'',start:'',end:yr?(yr.match(yearRe)||[''])[0]:'',marks});}
   });
+  // Projects
+  const projLines=get(/^projects?$/);
+  const projects=[];
+  projLines.forEach(line=>{
+    if(!line)return;
+    // "Name – description" or "Name: description" or just a name
+    const m=line.match(/^(.{2,80}?)\s*(?:[–—\-:]\s*|:\s+)(.+)$/);
+    if(m)projects.push({name:m[1].trim(),desc:m[2].trim()});
+    else projects.push({name:line.trim(),desc:''});
+  });
+  // Certifications, Languages, Awards
+  const certs=get(/certification/).join('\n').slice(0,1500);
+  let languages=get(/^languages?(?:\s+known)?$/).join(', ').replace(/\s*,\s*/g,', ').replace(/,+/g,',').replace(/^,|,$/g,'').slice(0,300);
+  const awards=get(/awards?|achievements?/).join('\n').slice(0,1500);
   const profile={father:label(["father'?s name",'father name']),dob:label(['date of birth','dob']),languages:label(['languages known','languages']),gender:label(['sex','gender']),marital:label(['marital status']),nationality:label(['nationality']),strengths:label(['strengths','strength'])};
   get(/personal profile|personal details/).forEach(line=>{const m=line.match(/^([^:：]+)\s*[:：]\s*(.+)$/);if(!m)return;const k=norm(m[1]),v=m[2].trim();if(/father/.test(k))profile.father=profile.father||v;else if(/dob|birth/.test(k))profile.dob=profile.dob||v;else if(/language/.test(k))profile.languages=profile.languages||v;else if(/sex|gender/.test(k))profile.gender=profile.gender||v;else if(/marital/.test(k))profile.marital=profile.marital||v;else if(/nationality/.test(k))profile.nationality=profile.nationality||v;else if(/strength/.test(k))profile.strengths=profile.strengths||v});
+  // If languages section empty but profile has languages, keep profile one; prefer section for languages field
+  if(!languages&&profile.languages)languages=profile.languages;
   const declLines=get(/^declaration$/);const declText=declLines.filter(x=>!/^\s*(place|date|signature)\s*[:：]/i.test(x)).join(' ');
   const place=label(['place']),date=label(['date']);
   const langs=label(['languages known']);
   if(langs&&!profile.languages)profile.languages=langs;
   const hasFresher=/career objective|personal profile|declaration|father'?s name|university\s*\/\s*board|marks\s*\/?%/i.test(raw);
-  return {name,role,email,phone,link,location:address,text:raw,summary,skills,exp,education,profile,decl:{text:declText,place,date},hasFresher};
+  return {name,role,email,phone,link,location:address,text:raw,summary,skills,exp,education,projects,certs,languages,awards,profile,decl:{text:declText,place,date},hasFresher};
 }
 function importInto(r,P){
   const p=r.personal;
@@ -565,6 +647,13 @@ function importInto(r,P){
   if(P.skills)r.skills=P.skills;
   if(P.exp&&P.exp.length&&r.experience.every(e=>!e.role&&!e.company&&!e.desc))r.experience=[{role:'',company:'',start:'',end:'',desc:P.exp.join('\n')}];
   if(P.education&&P.education.length){const rows=P.education.filter(e=>e.degree||e.school||e.board);if(rows.length)r.education=rows;}
+  if(P.projects&&P.projects.length){
+    const rows=P.projects.filter(x=>x.name||x.desc);
+    if(rows.length)r.projects=rows;
+  }
+  if(P.certs&&String(P.certs).trim())r.certs=String(P.certs).trim();
+  if(P.languages&&String(P.languages).trim())r.languages=String(P.languages).trim();
+  if(P.awards&&String(P.awards).trim())r.awards=String(P.awards).trim();
   if(P.profile)Object.keys(P.profile).forEach(k=>{if(P.profile[k])r.profile[k]=P.profile[k]});
   if(P.decl){if(P.decl.text)r.decl.text=P.decl.text;if(P.decl.place)r.decl.place=P.decl.place;if(P.decl.date)r.decl.date=P.decl.date;}
   if(P.hasFresher){r.theme=mkTheme('fresher');r.theme.photo=!!r.photo;}
