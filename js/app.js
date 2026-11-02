@@ -768,13 +768,25 @@ function nativePlugin(name){
   }
   return null;
 }
+function isNativeApp(){
+  const C=window.Capacitor;
+  return !!(C&&typeof C.isNativePlatform==='function'&&C.isNativePlatform());
+}
 async function saveBlobNative(blob,filename,mime,title){
-  const C=window.Capacitor,FS=nativePlugin('Filesystem'),Share=nativePlugin('Share');
-  if(!C||!FS||typeof C.isNativePlatform!=='function'||!C.isNativePlatform())return false;
+  if(!isNativeApp())return false;
+  const FS=nativePlugin('Filesystem');
+  if(!FS||typeof FS.writeFile!=='function')throw new Error('Android Filesystem plugin is unavailable.');
   const data=await blobB64(blob);
   const saved=await FS.writeFile({path:filename,data,directory:'DOCUMENTS',recursive:true});
-  if(Share&&saved&&saved.uri){
-    try{await Share.share({title:title||filename,text:'Saved from Resume44',url:saved.uri,dialogTitle:'Open or share file'})}catch(e){if(e&&e.name!=='AbortError')console.warn('Share sheet unavailable; file is already saved',e)}
+  if(!saved||!saved.uri)throw new Error('Android did not return a saved file URI.');
+  const Share=nativePlugin('Share');
+  if(Share&&typeof Share.share==='function'){
+    try{
+      await Share.share({title:title||filename,text:'Saved from Resume44',url:saved.uri,dialogTitle:'Share or open file'});
+    }catch(e){
+      if(e&&e.name==='AbortError')return true;
+      console.warn('File saved, but Android share sheet could not open:',e);
+    }
   }
   return true;
 }
@@ -854,7 +866,7 @@ async function exportDOCX(r){
     }]});
     const blob=await D.Packer.toBlob(doc),filename=(p.name||r.title||'resume').replace(/[^\w-]+/g,'_')+(r.type==='cv'?'_CV.docx':'_Resume.docx');
     if(await saveBlobNative(blob,filename,'application/vnd.openxmlformats-officedocument.wordprocessingml.document','Resume44 DOCX')){
-      track('docx_download');toast('DOCX saved in Documents. Use the share sheet to open it in Word or Docs.');return;
+      track('docx_download');toast('DOCX saved. Choose WhatsApp, Drive, Word or another app.',4500);return;
     }
     downloadBlobWeb(blob,filename);track('docx_download');toast('DOCX download started. Check Downloads.');
   }catch(e){console.error(e);toast(e.message||'Could not create DOCX. Please try again.');}
@@ -999,27 +1011,22 @@ function savePDF(doc,name,kind){
   try{if(PDF.url)URL.revokeObjectURL(PDF.url)}catch(e){}
   PDF.blob=blob;PDF.fn=fn;PDF.kind=kind||'resume';PDF.counted=false;PDF.url=URL.createObjectURL(blob);
 
-  // On phones, open the native share sheet immediately after PDF generation.
-  // Keep this call inside the original tap gesture for Android WebView support.
-  if(/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)){
-    try{
-      const file=new File([PDF.blob],PDF.fn,{type:'application/pdf'});
-      if(navigator.share&&(!navigator.canShare||navigator.canShare({files:[file]}))){
-        navigator.share({files:[file],title:PDF.fn})
-          .then(()=>countDl())
-          .catch(err=>{
-            if(err&&err.name==='AbortError')return;
-            track('pdf_failed',{why:'direct_share'});
-            pdfSheet();
-          });
-        return;
-      }
-    }catch(err){track('pdf_failed',{why:'direct_share_unavailable'})}
-    pdfSheet();
+  // Capacitor APK: save the generated PDF through Android Filesystem, then share it.
+  // Do not rely on the browser's <a download> behavior inside Android WebView.
+  if(isNativeApp()){
+    pdfNative().then(()=>{
+      countDl();
+      toast('PDF saved. Choose WhatsApp, Drive or another app to share it.',4500);
+    }).catch(err=>{
+      console.error('Native PDF save failed:',err);
+      track('pdf_failed',{why:'native_save'});
+      toast('PDF could not be saved. Please try again.');
+      pdfSheet();
+    });
     return;
   }
   pdfSheet();
-  pdfDownload();
+  if(!/Android|iPhone|iPad|iPod/i.test(navigator.userAgent))pdfDownload();
 }
 function countDl(){if(!PDF.counted){PDF.counted=true;track('pdf_download',{kind:PDF.kind})}}
 function pdfDownload(){
@@ -1041,14 +1048,7 @@ function pdfDownload(){
 }
 function blobB64(b){return new Promise((res,rej)=>{const fr=new FileReader();fr.onerror=rej;fr.onload=()=>res(String(fr.result).split(',')[1]);fr.readAsDataURL(b)})}
 async function pdfNative(){
-  const C=window.Capacitor,FS=nativePlugin('Filesystem'),Share=nativePlugin('Share');
-  if(!C||!FS||typeof C.isNativePlatform!=='function'||!C.isNativePlatform())return false;
-  const w=await FS.writeFile({path:PDF.fn,data:await blobB64(PDF.blob),directory:'DOCUMENTS',recursive:true});
-  if(Share&&w&&w.uri){
-    try{await Share.share({title:PDF.fn,text:'Saved from Resume44',url:w.uri,dialogTitle:'Open or share PDF'})}
-    catch(e){if(e&&e.name!=='AbortError')console.warn('PDF saved but share sheet unavailable',e)}
-  }
-  return true;
+  return saveBlobNative(PDF.blob,PDF.fn,'application/pdf','Resume44 PDF');
 }
 function pdfSheet(){
   let can=!!(window.Capacitor&&window.Capacitor.isNativePlatform&&window.Capacitor.isNativePlatform());try{can=can||!!(navigator.canShare&&navigator.canShare({files:[new File([PDF.blob],PDF.fn,{type:'application/pdf'})]}))}catch(e){}
@@ -1183,7 +1183,7 @@ const ACT={
  docx:()=>{if(S.cur)exportDOCX(S.cur)},
  tab:b=>{S.tab=b.dataset.v;$('#builder').dataset.tab=S.tab;document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('on',x.dataset.v===S.tab));window.scrollTo(0,0)},
  sample:()=>{const o=S.cur,s=sample(o.type);Object.assign(s,{id:o.id,theme:o.theme,photo:o.photo,saved:o.saved});if(o.theme.profile&&!s.decl.date)s.decl.date=todayStr();S.cur=s;$('#titleIn').value=s.title;renderForm();renderPreview();toast('Sample loaded. Edit anything you like.')},
- pdfSave:async()=>{try{if(await pdfNative()){countDl();toast('PDF saved to Documents');return}}catch(e){console.error(e);track('pdf_failed',{why:'native'})}
+ pdfSave:async()=>{try{if(await pdfNative()){countDl();toast('PDF saved. Choose an app from the share sheet.',4000);return}}catch(e){console.error(e);track('pdf_failed',{why:'native'});toast('Could not save PDF in Android. Please try again.');return}
     try{const f=new File([PDF.blob],PDF.fn,{type:'application/pdf'});if(navigator.canShare&&navigator.canShare({files:[f]})&&navigator.share){await navigator.share({files:[f],title:PDF.fn});countDl();return}}catch(e){if(e&&e.name==='AbortError')return;track('pdf_failed',{why:'share_fallback'})}
     if(pdfDownload())toast('Download started. Check your Downloads folder.',4000)},
  pdfShare:async()=>{try{await navigator.share({files:[new File([PDF.blob],PDF.fn,{type:'application/pdf'})],title:PDF.fn});countDl()}catch(e){if(!e||e.name!=='AbortError'){track('pdf_failed',{why:'share'});toast('Sharing is not available. Try Save to device or Open PDF.')}}},
