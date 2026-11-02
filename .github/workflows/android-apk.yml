@@ -39,8 +39,11 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Accept Android SDK licenses (the SDK is preinstalled on the runner)
+        run: |
+          SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          echo "Using Android SDK at $SDK"
+          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
 
       - name: Set up Gradle cache
         uses: gradle/actions/setup-gradle@v4
