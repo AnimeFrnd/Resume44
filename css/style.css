@@ -25,6 +25,8 @@ h1,h2,h3{letter-spacing:-.02em;line-height:1.2}
 
 /* shell */
 .top{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:12px;padding:12px 16px;background:var(--surface);border-bottom:1px solid var(--line)}
+/* Native Android WebView draws behind the system status bar on some devices. Reserve its height explicitly. */
+.native-app .top{padding-top:36px}
 .logo{display:flex;align-items:center;gap:10px;font-weight:800;font-size:19px;letter-spacing:-.03em}
 .logo i{display:grid;place-items:center;width:32px;height:32px;border-radius:9px;background:var(--blue);color:#fff;font-style:normal;font-size:13px;font-weight:800;letter-spacing:0}
 .logo b{color:var(--blue)}
