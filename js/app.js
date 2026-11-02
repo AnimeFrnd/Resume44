@@ -875,21 +875,27 @@ async function ocrTarget(t,file){
 async function ai(prompt,system){
   if(!AIM.on){const e=new Error('AI mode is off');e.code='aioff';throw e}
   track('ai_request');
-  if(!API_BASE) {
-    const e=new Error('AI backend is not configured');e.code='noai';
-    track('ai_failed',{code:'no_backend'});throw e;
-  }
+  if(!API_BASE){const e=new Error('AI backend is not configured');e.code='noai';track('ai_failed',{code:'no_backend'});throw e}
+  if(!BK.on){const e=new Error('Cannot reach the Resume44 server health endpoint');e.code='network';track('ai_failed',{code:'server_unreachable'});throw e}
+  if(!BK.ai){const e=new Error('The Resume44 server reports that its AI provider is not configured');e.code='noai';track('ai_failed',{code:'provider_not_configured'});throw e}
   try{
     const d=await api('/api/ai',{method:'POST',body:{prompt,system},timeout:60000});
     if(d&&typeof d.text==='string'&&d.text.trim())return d.text.trim();
     throw new Error('Empty AI response');
   }catch(e){
-    track('ai_failed',{code:e.status===429?'rate':'backend'});
+    track('ai_failed',{code:e.status===429?'rate':e instanceof TypeError?'network':'backend'});
     if(e.status===429){e.code='rate';throw e}
+    if(e instanceof TypeError||/failed to fetch|networkerror/i.test(String(e.message||''))){e.code='network';throw e}
     e.code='noai';throw e;
   }
 }
-function aiMsg(e){return e&&e.code==='aioff'?'AI mode is off. Turn it on from the AI switch to use this.':e&&e.code==='noai'?'AI is not connected yet (the app owner must add the API key on the server).':e&&e.code==='rate'?'Too many AI requests. Try again in a few minutes.':'AI is not available right now.'}
+function aiMsg(e){
+  if(e&&e.code==='aioff')return 'AI mode is off. Turn it on from the AI switch to use this.';
+  if(e&&e.code==='network')return 'Cannot connect to the AI server. The Cloudflare Worker must allow the Android app origin (https://localhost) in CORS and be reachable.';
+  if(e&&e.code==='noai')return 'The server is reachable, but its AI provider/API key is not configured. Add the provider key as a secret in the Cloudflare Worker settings.';
+  if(e&&e.code==='rate')return 'Too many AI requests. Try again in a few minutes.';
+  return 'AI is not available right now.';
+}
 function parseJSON(t){const c=t.replace(/```json|```/g,'').trim();const s=c.search(/[\[{]/);return JSON.parse(c.slice(s))}
 async function run(btn,fn,fb){
   if(!AIM.on){if(fb){fb();toast('AI is off, so a quick template draft was used. Turn AI on for a tailored result.',4500)}else toast('AI mode is off. Turn it on to use this.',4000);return}
