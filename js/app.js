@@ -189,7 +189,29 @@ function navItems(){
   $('#side').insertAdjacentHTML('beforeend','<hr><button class="nav aitog" id="aiSwSide" role="switch" data-act="aiToggle"></button>');
   paintAI();
 }
+const NAV_STACK=[];
+function setupNativeChrome(){
+  const P=window.Capacitor&&window.Capacitor.Plugins;
+  if(!P||!P.StatusBar)return;
+  try{P.StatusBar.setOverlaysWebView({overlay:false});}catch(e){}
+  try{P.StatusBar.setBackgroundColor({color:'#0a1226'});}catch(e){}
+  try{P.StatusBar.setStyle({style:'LIGHT'});}catch(e){}
+}
+function setupNativeBackHandling(){
+  const P=window.Capacitor&&window.Capacitor.Plugins,App=P&&P.App;
+  if(!App||typeof App.addListener!=='function')return;
+  App.addListener('backButton',()=>{
+    const side=$('#side'),scrim=$('#scrim');
+    if(side&&side.classList.contains('open')){side.classList.remove('open');scrim.classList.remove('open');return;}
+    const sheet=$('#pdfSheet');
+    if(sheet&&sheet.classList.contains('open')){sheet.classList.remove('open');return;}
+    if(NAV_STACK.length){S.view=NAV_STACK.pop();S.delArm=null;render();window.scrollTo(0,0);return;}
+    if(S.view!=='home'){S.view='home';render();window.scrollTo(0,0);return;}
+    try{App.exitApp();}catch(e){}
+  });
+}
 function go(v,opts={}){
+  if(S.view!==v){NAV_STACK.push(S.view);if(NAV_STACK.length>30)NAV_STACK.shift();}
   $('#side').classList.remove('open');$('#scrim').classList.remove('open');
   S.delArm=null;
   if(v==='builder'||v==='cv'){
@@ -1205,6 +1227,8 @@ function resumeText(r){
   S.resumes=(await loadKey('r44:resumes',[])).map(migrate);
   const m=await loadKey('r44:meta',{templates:[],pub:[]});
   S.templates=(m.templates||[]).map(t=>({id:t.id,payload:normPayload(t.payload)}));S.pub=m.pub||[];
+  setupNativeChrome();
+  setupNativeBackHandling();
   render();
   await initBackend();
   navItems();if(S.view==='templates')render();
