@@ -1,0 +1,10 @@
+# Generated during the Android build (see ANDROID.md)
+node_modules/
+www/
+android/
+
+# Misc
+*.log
+.DS_Store
+__pycache__/
+*.pyc

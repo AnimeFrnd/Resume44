@@ -1,0 +1,101 @@
+name: Android APK
+
+# Builds an installable debug APK of the Resume44 website (wrapped with Capacitor).
+# Runs on every push to the android-apk-setup branch, or manually from the Actions tab.
+on:
+  push:
+    branches: [android-apk-setup]
+  workflow_dispatch:
+
+permissions:
+  contents: write   # lets the job publish the APK as a GitHub Release
+
+concurrency:
+  group: android-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Set up Python (used for the app icon)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install dependencies
+        run: |
+          npm install --no-audit --no-fund
+          pip install pillow
+
+      - name: Copy the website into www/
+        run: npm run build:web
+
+      - name: Generate the Android project
+        run: npx cap add android
+
+      - name: Customise Android project (permissions, version, icon, splash)
+        run: python3 scripts/android_setup.py android
+
+      - name: Sync web assets and plugins into Android
+        run: npx cap sync android
+
+      - name: Build debug APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Name the APK
+        run: |
+          mkdir -p dist
+          cp android/app/build/outputs/apk/debug/app-debug.apk dist/Resume44-debug.apk
+          ls -la dist
+
+      - name: Upload APK as a workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Resume44-debug-apk
+          path: dist/Resume44-debug.apk
+          if-no-files-found: error
+
+      - name: Publish APK download link (GitHub Release)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # One rolling release, so the download link never changes.
+          gh release delete apk-latest --cleanup-tag --yes || true
+          gh release create apk-latest dist/Resume44-debug.apk \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --title "Resume44 Android APK (latest build)" \
+            --notes "Debug APK built by GitHub Actions run #${GITHUB_RUN_NUMBER} from commit ${GITHUB_SHA::7} on branch ${GITHUB_REF_NAME}."
+          URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/apk-latest/Resume44-debug.apk"
+          {
+            echo "### Resume44 APK is ready"
+            echo ""
+            echo "Download: ${URL}"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "APK download link: ${URL}"

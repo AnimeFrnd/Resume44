@@ -1,0 +1,8 @@
+{
+  "appId": "com.resume44.app",
+  "appName": "Resume44",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  }
+}
