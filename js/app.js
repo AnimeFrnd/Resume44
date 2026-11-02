@@ -891,8 +891,28 @@ function savePDF(doc,name,kind){
   let blob;try{blob=doc.output('blob')}catch(e){console.error(e);track('pdf_failed',{why:'create'});toast('Could not create the PDF.');return}
   try{if(PDF.url)URL.revokeObjectURL(PDF.url)}catch(e){}
   PDF.blob=blob;PDF.fn=fn;PDF.kind=kind||'resume';PDF.counted=false;PDF.url=URL.createObjectURL(blob);
+
+  // On phones, open the native share sheet immediately after PDF generation.
+  // This keeps the share call inside the original tap gesture (important on Android WebView).
+  if(/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)){
+    try{
+      const file=new File([PDF.blob],PDF.fn,{type:'application/pdf'});
+      if(navigator.share&&(!navigator.canShare||navigator.canShare({files:[file]}))){
+        navigator.share({files:[file],title:PDF.fn})
+          .then(()=>countDl())
+          .catch(err=>{
+            if(err&&err.name==='AbortError')return;
+            track('pdf_failed',{why:'direct_share'});
+            pdfSheet();
+          });
+        return;
+      }
+    }catch(err){track('pdf_failed',{why:'direct_share_unavailable'})}
+    pdfSheet();
+    return;
+  }
   pdfSheet();
-  if(!/Android|iPhone|iPad|iPod/i.test(navigator.userAgent))pdfDownload();
+  pdfDownload();
 }
 function countDl(){if(!PDF.counted){PDF.counted=true;track('pdf_download',{kind:PDF.kind})}}
 function pdfDownload(){
