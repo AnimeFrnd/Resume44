@@ -1,3 +1,8 @@
+/* Apply native-only layout fixes before the first render. */
+if (window.Capacitor && typeof window.Capacitor.isNativePlatform === 'function' && window.Capacitor.isNativePlatform()) {
+  document.documentElement.classList.add('native-app');
+}
+
 /* ---------- helpers ---------- */
 const $ = (s,r=document)=>r.querySelector(s);
 const esc = s => String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -151,7 +156,7 @@ function migrate(r){
 }
 function sample(type='resume'){
   const r=blank(type);r.title='Sample '+(type==='cv'?'CV':'resume');
-  Object.assign(r.personal,{name:'Arya Sharma',role:'Frontend Developer',email:'arya.sharma@email.com',phone:'+91 98765 43210',location:'Hyderabad, India',link:'linkedin.com/in/aryasharma'});
+  Object.assign(r.personal,{name:'Arya Bro 44',role:'Frontend Developer',email:'arya.sharma@email.com',phone:'+91 98765 43210',location:'Hyderabad, India',link:'linkedin.com/in/aryasharma'});
   r.summary='Motivated and adaptable developer seeking an opportunity in a growth-oriented company where I can use my skills, keep learning and contribute to the team\u2019s goals.';
   r.experience=[{role:'Frontend Developer',company:'BrightPay Technologies',start:'Jun 2023',end:'',desc:'Rebuilt the checkout flow in React, cutting page load time by 38%\nLed migration of 40+ components to a shared design system\nMentored 2 interns and ran weekly code reviews'},
     {role:'Web Development Intern',company:'Nimbus Labs',start:'Jan 2023',end:'May 2023',desc:'Built 6 responsive landing pages used in marketing campaigns\nFixed 25+ UI bugs and improved Lighthouse score from 62 to 91'}];
