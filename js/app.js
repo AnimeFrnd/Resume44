@@ -758,31 +758,95 @@ async function inferResumeStyle(file,r){
   r.theme.nameLine=monochrome;r.theme.thick=false;
   r.theme.preset='custom';
 }
+async function saveBlobNative(blob,filename,mime,title){
+  const C=window.Capacitor,P=C&&C.Plugins;
+  if(!P||!P.Filesystem||typeof C.isNativePlatform!=='function'||!C.isNativePlatform())return false;
+  const data=await blobB64(blob);
+  const saved=await P.Filesystem.writeFile({path:filename,data,directory:'DOCUMENTS',recursive:true});
+  if(P.Share&&saved&&saved.uri){
+    try{await P.Share.share({title:title||filename,text:'Saved from Resume44',url:saved.uri,dialogTitle:'Open or share file'})}catch(e){if(e&&e.name!=='AbortError')console.warn('Share sheet unavailable; file is already saved',e)}
+  }
+  return true;
+}
+function downloadBlobWeb(blob,filename){
+  const url=URL.createObjectURL(blob),a=document.createElement('a');
+  a.href=url;a.download=filename;a.rel='noopener';a.style.position='fixed';a.style.left='-9999px';
+  document.body.appendChild(a);a.click();setTimeout(()=>{a.remove();URL.revokeObjectURL(url)},10000);
+}
 async function exportDOCX(r){
   try{
     if(!window.docx)await loadScript('https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js');
     const D=window.docx;if(!D||!D.Document||!D.Packer)throw new Error('DOCX library could not load. Check your internet connection.');
-    const p=r.personal,t=r.theme,accent=(t.accent||'#1d5be0').replace('#','').toUpperCase();
-    const children=[];
-    const para=(text,opts={})=>new D.Paragraph({children:[new D.TextRun({text:String(text||''),bold:!!opts.bold,italics:!!opts.italics,size:opts.size||20,color:opts.color||'222222',font:opts.font|| (t.font==='serif'?'Georgia':'Arial')})],spacing:{after:opts.after??100},alignment:opts.align||D.AlignmentType.LEFT});
-    const heading=text=>{children.push(new D.Paragraph({children:[new D.TextRun({text:String(text).toUpperCase(),bold:true,size:24,color:accent,font:t.font==='serif'?'Georgia':'Arial'})],heading:D.HeadingLevel.HEADING_2,spacing:{before:220,after:100},border:{bottom:{color:accent,space:4,size:6,style:D.BorderStyle.SINGLE}}}));};
-    if(p.name)children.push(para(p.name,{bold:true,size:34,color:accent,align:t.align==='center'?D.AlignmentType.CENTER:D.AlignmentType.LEFT,after:70}));
-    if(p.role)children.push(para(p.role,{size:22,align:t.align==='center'?D.AlignmentType.CENTER:D.AlignmentType.LEFT,after:70}));
-    const contact=[p.email,p.phone,p.location,p.link].filter(Boolean).join(' | ');if(contact)children.push(para(contact,{size:18,align:t.align==='center'?D.AlignmentType.CENTER:D.AlignmentType.LEFT,after:180}));
+    const p=r.personal,t=r.theme,accent=(t.accent||'#1d5be0').replace('#','').toUpperCase(),light=accent;
+    const children=[],font=t.font==='serif'?'Georgia':'Arial';
+    const para=(text,opts={})=>new D.Paragraph({
+      children:[new D.TextRun({text:String(text??''),bold:!!opts.bold,italics:!!opts.italics,size:opts.size||20,color:opts.color||'222222',font})],
+      spacing:{before:opts.before||0,after:opts.after??100,line:opts.line||276},
+      alignment:opts.align||D.AlignmentType.LEFT,
+      bullet:opts.bullet?{indent:260}:undefined
+    });
+    const heading=text=>children.push(new D.Paragraph({
+      children:[new D.TextRun({text:String(text).toUpperCase(),bold:true,size:24,color:accent,font})],
+      heading:D.HeadingLevel.HEADING_2,keepNext:true,
+      spacing:{before:260,after:110},
+      border:{bottom:{color:accent,space:5,size:8,style:D.BorderStyle.SINGLE}}
+    }));
+    const cell=(value,header=false)=>new D.TableCell({
+      children:[new D.Paragraph({children:[new D.TextRun({text:String(value||'—'),bold:header,size:header?18:17,color:header?'FFFFFF':'222222',font})],spacing:{before:40,after:40}})],
+      shading:header?{fill:accent,type:D.ShadingType.CLEAR}:{fill:'F5F7FB',type:D.ShadingType.CLEAR},
+      margins:{top:90,bottom:90,left:100,right:100},
+      verticalAlignment:D.VerticalAlign.CENTER
+    });
+    const table=(headers,rows)=>new D.Table({
+      width:{size:100,type:D.WidthType.PERCENTAGE},
+      rows:[new D.TableRow({tableHeader:true,children:headers.map(x=>cell(x,true))}),...rows.map(row=>new D.TableRow({cantSplit:true,children:row.map(x=>cell(x,false))}))],
+      borders:{top:{style:D.BorderStyle.SINGLE,size:4,color:'D7DEEA'},bottom:{style:D.BorderStyle.SINGLE,size:4,color:'D7DEEA'},left:{style:D.BorderStyle.SINGLE,size:4,color:'D7DEEA'},right:{style:D.BorderStyle.SINGLE,size:4,color:'D7DEEA'},insideHorizontal:{style:D.BorderStyle.SINGLE,size:3,color:'E1E6EF'},insideVertical:{style:D.BorderStyle.SINGLE,size:3,color:'E1E6EF'}}
+    });
+    if(p.name)children.push(new D.Paragraph({children:[new D.TextRun({text:p.name,bold:true,size:38,color:accent,font})],alignment:t.align==='center'?D.AlignmentType.CENTER:D.AlignmentType.LEFT,spacing:{after:70}}));
+    if(p.role)children.push(new D.Paragraph({children:[new D.TextRun({text:p.role,bold:true,size:23,color:'555F73',font})],alignment:t.align==='center'?D.AlignmentType.CENTER:D.AlignmentType.LEFT,spacing:{after:100}}));
+    const contact=[p.email,p.phone,p.location,p.link].filter(Boolean).join('   •   ');
+    if(contact)children.push(new D.Paragraph({children:[new D.TextRun({text:contact,size:17,color:'586579',font})],alignment:t.align==='center'?D.AlignmentType.CENTER:D.AlignmentType.LEFT,spacing:{after:220},border:{bottom:{color:accent,space:8,size:t.thick?14:6,style:D.BorderStyle.SINGLE}}}));
     const T=titles(r);
     order(r).forEach(k=>{
       heading(T[k]||k);
-      if(k==='summary'&&r.summary)children.push(para(r.summary));
-      else if(k==='experience')r.experience.filter(e=>e.role||e.company||e.desc).forEach(e=>{children.push(para([e.role,[e.start,e.end].filter(Boolean).join(' – ')].filter(Boolean).join('     '),{bold:true}));if(e.company)children.push(para(e.company,{italics:true}));lines(e.desc).forEach(x=>children.push(para('• '+x,{after:50})));});
-      else if(k==='education')r.education.filter(e=>e.degree||e.school).forEach(e=>children.push(para([e.degree,e.school,e.board,e.end||e.start,e.marks].filter(Boolean).join(' | '))));
-      else if(k==='projects')r.projects.filter(x=>x.name||x.desc).forEach(x=>children.push(para([x.name,x.desc].filter(Boolean).join(' — '))));
-      else if(k==='skills')skillList(r).forEach(x=>children.push(para('• '+x,{after:45})));
-      else if(k==='certs'||k==='awards'||k==='languages'){lines(r[k]).forEach(x=>children.push(para(x)));if(k==='languages'&&!lines(r.languages).length&&r.languages)children.push(para(r.languages));}
-      else if(k==='profile')profRows(r).forEach(([a,b])=>children.push(para(a+': '+b)));
-      else if(k==='declaration'){if(r.decl.text)children.push(para(r.decl.text));if(r.decl.place)children.push(para('Place: '+r.decl.place));if(r.decl.date)children.push(para('Date: '+r.decl.date));}
+      if(k==='summary'&&r.summary)children.push(para(r.summary,{size:20,after:130}));
+      else if(k==='experience')r.experience.filter(e=>e.role||e.company||e.desc).forEach(e=>{
+        children.push(para([e.role,[e.start,e.end].filter(Boolean).join(' – ')].filter(Boolean).join('     '),{bold:true,size:21,after:35}));
+        if(e.company)children.push(para(e.company,{italics:true,color:'586579',after:55}));
+        lines(e.desc).forEach(x=>children.push(para(x,{bullet:true,after:55})));
+      });
+      else if(k==='education'){
+        const ed=r.education.filter(e=>e.degree||e.school);
+        if(ed.length)children.push(table(['Qualification','Institution','University / Board','Year','Marks'],ed.map(e=>[e.degree,e.school,e.board,e.end||e.start,e.marks])));
+      }
+      else if(k==='projects')r.projects.filter(x=>x.name||x.desc).forEach(x=>{
+        children.push(para(x.name,{bold:true,size:21,after:35}));
+        if(x.desc)children.push(para(x.desc,{after:100}));
+      });
+      else if(k==='skills'){
+        const skills=skillList(r);
+        if(skills.length)children.push(table(['Key skills',''],skills.reduce((a,x,i)=>{if(i%2===0)a.push([x,skills[i+1]||'']);return a},[])));
+      }
+      else if(k==='certs'||k==='awards'||k==='languages')lines(r[k]).forEach(x=>children.push(para(x,{bullet:true,after:60})));
+      else if(k==='profile'){
+        const rows=profRows(r);if(rows.length)children.push(table(['Personal detail','Information'],rows));
+      }
+      else if(k==='declaration'){
+        if(r.decl.text)children.push(para(r.decl.text,{after:120}));
+        const rows=[['Place',r.decl.place],['Date',r.decl.date]].filter(x=>x[1]);
+        if(rows.length)children.push(table(['Detail','Value'],rows));
+        if(p.name)children.push(new D.Paragraph({children:[new D.TextRun({text:'Signature: '+p.name,bold:true,size:19,color:'333333',font})],alignment:D.AlignmentType.RIGHT,spacing:{before:260,after:80}}));
+      }
     });
-    const doc=new D.Document({sections:[{properties:{page:{size:{width:11906,height:16838},margin:{top:850,right:900,bottom:850,left:900}}},children}]});
-    const blob=await D.Packer.toBlob(doc),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=(p.name||r.title||'resume').replace(/[^\w-]+/g,'_')+'_Resume.docx';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2000);track('docx_download');toast('DOCX downloaded. You can edit it in Word or Google Docs.');
+    const doc=new D.Document({styles:{default:{document:{run:{font,size:20},paragraph:{spacing:{after:100,line:276}}}}},sections:[{
+      properties:{page:{size:{width:11906,height:16838},margin:{top:850,right:900,bottom:850,left:900}}},
+      children
+    }]});
+    const blob=await D.Packer.toBlob(doc),filename=(p.name||r.title||'resume').replace(/[^\w-]+/g,'_')+(r.type==='cv'?'_CV.docx':'_Resume.docx');
+    if(await saveBlobNative(blob,filename,'application/vnd.openxmlformats-officedocument.wordprocessingml.document','Resume44 DOCX')){
+      track('docx_download');toast('DOCX saved in Documents. Use the share sheet to open it in Word or Docs.');return;
+    }
+    downloadBlobWeb(blob,filename);track('docx_download');toast('DOCX download started. Check Downloads.');
   }catch(e){console.error(e);toast(e.message||'Could not create DOCX. Please try again.');}
 }
 async function ocrTarget(t,file){
