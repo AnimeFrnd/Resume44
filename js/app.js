@@ -1005,13 +1005,17 @@ function pdfDownload(){
 }
 function blobB64(b){return new Promise((res,rej)=>{const fr=new FileReader();fr.onerror=rej;fr.onload=()=>res(String(fr.result).split(',')[1]);fr.readAsDataURL(b)})}
 async function pdfNative(){
-  const C=window.Capacitor,P=C&&C.Plugins;if(!P||!P.Filesystem)return false;
-  const w=await P.Filesystem.writeFile({path:PDF.fn,data:await blobB64(PDF.blob),directory:'DOCUMENTS'});
-  if(P.Share)await P.Share.share({title:PDF.fn,url:w.uri});
+  const C=window.Capacitor,P=C&&C.Plugins;
+  if(!P||!P.Filesystem||typeof C.isNativePlatform!=='function'||!C.isNativePlatform())return false;
+  const w=await P.Filesystem.writeFile({path:PDF.fn,data:await blobB64(PDF.blob),directory:'DOCUMENTS',recursive:true});
+  if(P.Share&&w&&w.uri){
+    try{await P.Share.share({title:PDF.fn,text:'Saved from Resume44',url:w.uri,dialogTitle:'Open or share PDF'})}
+    catch(e){if(e&&e.name!=='AbortError')console.warn('PDF saved but share sheet unavailable',e)}
+  }
   return true;
 }
 function pdfSheet(){
-  let can=false;try{can=!!(navigator.canShare&&navigator.canShare({files:[new File([PDF.blob],PDF.fn,{type:'application/pdf'})]}))}catch(e){}
+  let can=!!(window.Capacitor&&window.Capacitor.isNativePlatform&&window.Capacitor.isNativePlatform());try{can=can||!!(navigator.canShare&&navigator.canShare({files:[new File([PDF.blob],PDF.fn,{type:'application/pdf'})]}))}catch(e){}
   let framed=false;try{framed=window.self!==window.top}catch(e){framed=true}
   $('#pdfDlg').innerHTML=`<h3 id="pdfT">Your PDF is ready</h3><p>${esc(PDF.fn)}</p>
    <button class="btn pri" data-act="pdfSave">${icon('download',16)}Save to device</button>
@@ -1147,8 +1151,8 @@ const ACT={
     try{const f=new File([PDF.blob],PDF.fn,{type:'application/pdf'});if(navigator.canShare&&navigator.canShare({files:[f]})&&navigator.share){await navigator.share({files:[f],title:PDF.fn});countDl();return}}catch(e){if(e&&e.name==='AbortError')return;track('pdf_failed',{why:'share_fallback'})}
     if(pdfDownload())toast('Download started. Check your Downloads folder.',4000)},
  pdfShare:async()=>{try{await navigator.share({files:[new File([PDF.blob],PDF.fn,{type:'application/pdf'})],title:PDF.fn});countDl()}catch(e){if(!e||e.name!=='AbortError'){track('pdf_failed',{why:'share'});toast('Sharing is not available. Try Save to device or Open PDF.')}}},
- pdfAlt:async()=>{try{const a=document.createElement('a');a.href='data:application/pdf;base64,'+await blobB64(PDF.blob);a.download=PDF.fn;a.style.display='none';document.body.appendChild(a);a.click();setTimeout(()=>a.remove(),1500);countDl();toast('Saving… check your Downloads folder',4000)}catch(e){track('pdf_failed',{why:'alt'});toast('Could not save. Try Share or Open PDF.')}},
- pdfOpen:()=>{const w=window.open(PDF.url,'_blank');if(!w){track('pdf_failed',{why:'popup'});toast('The new tab was blocked. Allow pop-ups, or use Save to device.')}else countDl()},
+ pdfAlt:async()=>{try{if(await pdfNative()){countDl();toast('PDF saved in Documents. Choose an app to open or share it.');return}const a=document.createElement('a');a.href='data:application/pdf;base64,'+await blobB64(PDF.blob);a.download=PDF.fn;a.style.display='none';document.body.appendChild(a);a.click();setTimeout(()=>a.remove(),1500);countDl();toast('Saving… check your Downloads folder',4000)}catch(e){track('pdf_failed',{why:'alt'});toast('Could not save. Try Share or Open PDF.')}},
+ pdfOpen:async()=>{try{if(await pdfNative()){countDl();toast('PDF saved. Select a PDF viewer from the share options to open it.');return}const w=window.open(PDF.url,'_blank');if(!w){track('pdf_failed',{why:'popup'});toast('The new tab was blocked. Use Save to device or Share.')}else countDl()}catch(e){console.error(e);track('pdf_failed',{why:'open'});toast('Could not open PDF. Try Save to device.')}},
  pdfClose:(b,e)=>{if(b.id==='pdfSheet'&&e&&e.target!==b)return;$('#pdfSheet').classList.remove('open')},
  acMode:b=>{S.f.acc.mode=b.dataset.v;$('#main').innerHTML=vAccount()},
  authGo:async b=>{const f=S.f.acc,su=f.mode==='signup',old=b.innerHTML;b.disabled=true;
