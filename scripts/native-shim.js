@@ -8,7 +8,7 @@
   var isNative = typeof C.isNativePlatform === 'function' ? C.isNativePlatform() : false;
   if (!isNative) return;
   C.Plugins = C.Plugins || {};
-  ['Filesystem', 'Share'].forEach(function (name) {
+  ['Filesystem', 'Share', 'App', 'StatusBar'].forEach(function (name) {
     try {
       if (C.Plugins[name]) return;
       if (typeof C.registerPlugin === 'function') {
