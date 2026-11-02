@@ -777,7 +777,7 @@ async function saveBlobNative(blob,filename,mime,title){
   const FS=nativePlugin('Filesystem');
   if(!FS||typeof FS.writeFile!=='function')throw new Error('Android Filesystem plugin is unavailable.');
   const data=await blobB64(blob);
-  const saved=await FS.writeFile({path:filename,data,directory:'DOCUMENTS',recursive:true});
+  const saved=await FS.writeFile({path:filename,data,directory:'CACHE',recursive:true});
   if(!saved||!saved.uri)throw new Error('Android did not return a saved file URI.');
   const Share=nativePlugin('Share');
   if(Share&&typeof Share.share==='function'){
