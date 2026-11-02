@@ -198,9 +198,9 @@ const NAV_STACK=[];
 function setupNativeChrome(){
   const P=nativePlugin('StatusBar');
   if(!P)return;
-  try{P.StatusBar.setOverlaysWebView({overlay:false});}catch(e){}
-  try{P.StatusBar.setBackgroundColor({color:'#0a1226'});}catch(e){}
-  try{P.StatusBar.setStyle({style:'LIGHT'});}catch(e){}
+  try{P.setOverlaysWebView({overlay:false});}catch(e){}
+  try{P.setBackgroundColor({color:'#0a1226'});}catch(e){}
+  try{P.setStyle({style:'LIGHT'});}catch(e){}
 }
 function setupNativeBackHandling(){
   const App=nativePlugin('App');
