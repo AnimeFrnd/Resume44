@@ -196,14 +196,14 @@ function navItems(){
 }
 const NAV_STACK=[];
 function setupNativeChrome(){
-  const P=window.Capacitor&&window.Capacitor.Plugins;
-  if(!P||!P.StatusBar)return;
+  const P=nativePlugin('StatusBar');
+  if(!P)return;
   try{P.StatusBar.setOverlaysWebView({overlay:false});}catch(e){}
   try{P.StatusBar.setBackgroundColor({color:'#0a1226'});}catch(e){}
   try{P.StatusBar.setStyle({style:'LIGHT'});}catch(e){}
 }
 function setupNativeBackHandling(){
-  const P=window.Capacitor&&window.Capacitor.Plugins,App=P&&P.App;
+  const App=nativePlugin('App');
   if(!App||typeof App.addListener!=='function')return;
   App.addListener('backButton',()=>{
     const side=$('#side'),scrim=$('#scrim');
@@ -758,13 +758,23 @@ async function inferResumeStyle(file,r){
   r.theme.nameLine=monochrome;r.theme.thick=false;
   r.theme.preset='custom';
 }
+const NATIVE_PLUGIN_CACHE=Object.create(null);
+function nativePlugin(name){
+  const C=window.Capacitor;
+  if(!C)return null;
+  if(C.Plugins&&C.Plugins[name])return C.Plugins[name];
+  if(typeof C.registerPlugin==='function'){
+    try{return NATIVE_PLUGIN_CACHE[name]||(NATIVE_PLUGIN_CACHE[name]=C.registerPlugin(name))}catch(e){console.warn('Native plugin registration failed:',name,e)}
+  }
+  return null;
+}
 async function saveBlobNative(blob,filename,mime,title){
-  const C=window.Capacitor,P=C&&C.Plugins;
-  if(!P||!P.Filesystem||typeof C.isNativePlatform!=='function'||!C.isNativePlatform())return false;
+  const C=window.Capacitor,FS=nativePlugin('Filesystem'),Share=nativePlugin('Share');
+  if(!C||!FS||typeof C.isNativePlatform!=='function'||!C.isNativePlatform())return false;
   const data=await blobB64(blob);
-  const saved=await P.Filesystem.writeFile({path:filename,data,directory:'DOCUMENTS',recursive:true});
-  if(P.Share&&saved&&saved.uri){
-    try{await P.Share.share({title:title||filename,text:'Saved from Resume44',url:saved.uri,dialogTitle:'Open or share file'})}catch(e){if(e&&e.name!=='AbortError')console.warn('Share sheet unavailable; file is already saved',e)}
+  const saved=await FS.writeFile({path:filename,data,directory:'DOCUMENTS',recursive:true});
+  if(Share&&saved&&saved.uri){
+    try{await Share.share({title:title||filename,text:'Saved from Resume44',url:saved.uri,dialogTitle:'Open or share file'})}catch(e){if(e&&e.name!=='AbortError')console.warn('Share sheet unavailable; file is already saved',e)}
   }
   return true;
 }
@@ -1011,11 +1021,11 @@ function pdfDownload(){
 }
 function blobB64(b){return new Promise((res,rej)=>{const fr=new FileReader();fr.onerror=rej;fr.onload=()=>res(String(fr.result).split(',')[1]);fr.readAsDataURL(b)})}
 async function pdfNative(){
-  const C=window.Capacitor,P=C&&C.Plugins;
-  if(!P||!P.Filesystem||typeof C.isNativePlatform!=='function'||!C.isNativePlatform())return false;
-  const w=await P.Filesystem.writeFile({path:PDF.fn,data:await blobB64(PDF.blob),directory:'DOCUMENTS',recursive:true});
-  if(P.Share&&w&&w.uri){
-    try{await P.Share.share({title:PDF.fn,text:'Saved from Resume44',url:w.uri,dialogTitle:'Open or share PDF'})}
+  const C=window.Capacitor,FS=nativePlugin('Filesystem'),Share=nativePlugin('Share');
+  if(!C||!FS||typeof C.isNativePlatform!=='function'||!C.isNativePlatform())return false;
+  const w=await FS.writeFile({path:PDF.fn,data:await blobB64(PDF.blob),directory:'DOCUMENTS',recursive:true});
+  if(Share&&w&&w.uri){
+    try{await Share.share({title:PDF.fn,text:'Saved from Resume44',url:w.uri,dialogTitle:'Open or share PDF'})}
     catch(e){if(e&&e.name!=='AbortError')console.warn('PDF saved but share sheet unavailable',e)}
   }
   return true;
