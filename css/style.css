@@ -186,6 +186,22 @@ label.tg input{width:18px;height:18px;margin-top:2px;accent-color:var(--blue);fl
 .paper .decl{display:flex;justify-content:space-between;margin-top:10px;gap:12px}
 .ph{color:#9aa6c0}
 
+/* CMS Laboratories resume layout */
+.paper.cms{font-family:Georgia,'Times New Roman',serif;font-size:11.5px;line-height:1.34;padding:20px 18px;}
+.paper.cms .cms-logos{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;align-items:center;text-align:center;font-family:Arial,sans-serif;font-size:9px;font-weight:800;color:#174f8b;margin:0 0 12px;}
+.paper.cms .cms-logos span{border-bottom:2px solid #d7e2ef;padding:5px 1px;}
+.paper.cms .cms-title{text-align:center;font-weight:800;text-decoration:underline;font-size:17px;margin:0 0 16px;}
+.paper.cms .cms-contact{margin:0 0 16px 52px;font-size:11.5px;}
+.paper.cms .cms-contact div{min-height:15px;}
+.paper.cms .cms-sec{display:grid;grid-template-columns:84px minmax(0,1fr);gap:8px;margin:8px 0;align-items:stretch;}
+.paper.cms .cms-label{background:#9abd5a;border:1px solid #333;color:#111;font-weight:800;padding:5px 4px;min-height:28px;overflow-wrap:anywhere;}
+.paper.cms .cms-content{min-width:0;padding:2px 0 5px;}
+.paper.cms .cms-content h2{display:none;}
+.paper.cms .cms-content table.edu{font-size:9px;}
+.paper.cms .cms-content table.edu th,.paper.cms .cms-content table.edu td{padding:3px 2px;}
+.paper.cms .cms-content .er{margin-top:3px;}
+.paper.cms .cms-content .decl{margin-top:8px;}
+
 /* templates */
 .gal{display:grid;gap:14px;grid-template-columns:1fr 1fr}
 @media (min-width:900px){.gal{grid-template-columns:repeat(3,1fr)}}

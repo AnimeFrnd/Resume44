@@ -4,7 +4,7 @@ name: Android APK
 # Runs on every push to the android-apk-setup branch, or manually from the Actions tab.
 on:
   push:
-    branches: [android-apk-setup, android-statusbar-back-fix, android-download-docx-ai-fix]
+    branches: [android-apk-setup, android-statusbar-back-fix, android-download-docx-ai-fix, feature/cms-labs-resume-theme]
   workflow_dispatch:
 
 permissions:
@@ -52,6 +52,9 @@ jobs:
         run: |
           npm install --no-audit --no-fund
           pip install pillow
+
+      - name: Check JavaScript syntax
+        run: node --check js/app.js
 
       - name: Copy the website into www/
         run: npm run build:web
