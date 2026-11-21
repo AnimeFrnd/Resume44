@@ -844,7 +844,7 @@ async function exportDOCX(r){
     const cmsSection=(label,body)=>new D.Table({
       width:{size:100,type:D.WidthType.PERCENTAGE},
       rows:[new D.TableRow({cantSplit:true,children:[
-        new D.TableCell({width:{size:1750,type:D.WidthType.DXA},shading:{fill:'9ABD5A',type:D.ShadingType.CLEAR},margins:{top:100,bottom:100,left:90,right:90},children:[para(label,{bold:true,size:19})]}),
+        new D.TableCell({width:{size:1500,type:D.WidthType.DXA},shading:{fill:'9ABD5A',type:D.ShadingType.CLEAR},margins:{top:100,bottom:100,left:90,right:90},children:[para(label,{bold:true,size:19})]}),
         new D.TableCell({width:{size:8500,type:D.WidthType.DXA},margins:{top:90,bottom:90,left:120,right:100},children:body.length?body:[para(' ',{size:16})]})
       ]})],
       borders:{top:{style:D.BorderStyle.SINGLE,size:4,color:'333333'},bottom:{style:D.BorderStyle.SINGLE,size:4,color:'333333'},left:{style:D.BorderStyle.SINGLE,size:4,color:'333333'},right:{style:D.BorderStyle.SINGLE,size:4,color:'333333'},insideVertical:{style:D.BorderStyle.SINGLE,size:4,color:'333333'}}
