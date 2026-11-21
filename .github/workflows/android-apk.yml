@@ -53,6 +53,9 @@ jobs:
           npm install --no-audit --no-fund
           pip install pillow
 
+      - name: Check JavaScript syntax
+        run: node --check js/app.js
+
       - name: Copy the website into www/
         run: npm run build:web
 
